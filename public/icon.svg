@@ -1,0 +1,48 @@
+<!-- The app icon. Ground is #0B0B0C — the same value as the manifest's background_color and
+     the CSS ground, so icon -> launch splash -> app is one continuous surface with no colour
+     step at launch. Do NOT lift it for home-screen contrast against a dark wallpaper: that
+     trades a daily, unavoidable seam for a case the user controls.
+
+     Flat fills and strokes only. No gradients, no glow — sharp downscales this to 180 and 60
+     px and soft edges turn to mush there. Spark strokes are 18 units = 2.11 px at the 60 pt
+     home-screen footprint; anything thinner disappears.
+
+     The anvil is four aligned primitives, not one traced path. Hand-tracing it produced a
+     shape whose slab centred on x 311 while its base centred on 262, which renders lopsided.
+     Slab, waist and base all centre on ~300 here; the horn is what makes the glyph
+     asymmetric. Re-render and LOOK before trusting any edit to these numbers.
+
+     Regenerate the PNGs with `npm run icons`. Never hand-draw them. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#0B0B0C"/>
+
+  <g fill="#FFFFFF" transform="translate(28.85 130.2) scale(0.905)">
+    <!-- horn: overlaps the slab to x=168 so the slab's rounded left corners cannot notch it -->
+    <path d="M168 118 L168 192 C122 190, 78 180, 42 162 C80 142, 122 121, 168 118 Z"/>
+    <rect x="150" y="118" width="322" height="72" rx="5"/>
+    <!-- waist: 96 units at its narrowest against a 260-unit base, a 2.7x flare. At 1.6x the
+         two merge into a single stem at Spotlight size. -->
+    <path d="M246 186 L354 186 C344 230, 350 266, 368 300 L232 300 C250 266, 256 230, 246 186 Z"/>
+    <path d="M170 296 L430 296 L430 356 L366 356 C352 336, 328 328, 300 328 C272 328, 248 336, 234 356 L170 356 Z"/>
+  </g>
+
+  <!-- Struck from the top face at (336,237). Orange is 8.34:1 on this ground and is the only
+       colour in the project outside the violet palette: it lives on the icon and must never
+       appear in the UI. It also rules out a purple ground — 2.60:1 there. -->
+  <g fill="none" stroke="#FF8A1F" stroke-linecap="round" stroke-width="18">
+    <path d="M336 237 Q 346 146 386 88"/>
+    <path d="M336 237 Q 370 156 422 114"/>
+    <path d="M336 237 Q 384 182 438 154"/>
+    <path d="M336 237 Q 312 154 300 102"/>
+    <path d="M336 237 Q 394 210 448 194"/>
+  </g>
+  <g fill="#FF8A1F">
+    <circle cx="410" cy="80" r="7"/>
+    <circle cx="456" cy="120" r="6"/>
+    <circle cx="466" cy="168" r="6"/>
+    <circle cx="280" cy="86" r="6"/>
+    <circle cx="460" cy="208" r="5"/>
+    <circle cx="364" cy="106" r="5"/>
+  </g>
+  <circle cx="336" cy="234" r="15" fill="#FFD8A8"/>
+</svg>

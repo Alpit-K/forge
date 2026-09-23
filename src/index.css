@@ -1,0 +1,2960 @@
+/* Inter, latin subset, variable, self-hosted — the app must render with no signal, so the
+   font ships in the bundle and never comes off a CDN. The file carries an `opsz` axis
+   (14–32) as well as `wght`, and browsers apply it automatically: the 56px numerals are
+   clamped to 32 and therefore drawn with Inter's display cut rather than its text cut,
+   which is most of why the rest timer reads as tight as it does. The unicode-range is
+   Google's latin block verbatim — anything outside it falls back to SF, which is the right
+   answer for a character we did not ship a glyph for. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./assets/inter-latin-var.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}
+
+/* One palette — the app is dark only, so there is no light block, no
+   [data-theme] override and no prefers-color-scheme branch. Every pair below was measured;
+   the numbers in the comments are contrast ratios, not decoration — and every one of them
+   is now asserted in `tokens.test.js`, which reads this file. A token that moves without
+   its comment moving with it fails the suite.
+
+   Ground and card sit 1.25:1 apart and card to input 1.39:1 — under about 1.2 a surface
+   stops reading as raised at all, which is what killed the first pass at these values. */
+:root {
+  /* The three surfaces share one hue, and it is the accent's. --bg was already there by
+     accident — it sits at 286.1 deg against --accent's 286.2 — while the two raised surfaces
+     sat around 265, roughly 20 deg blue of both, which is what made them read as grey next
+     to a violet UI rather than as part of it. Rotating them onto 286 at the chroma they had
+     moves each hex by one unit per channel and is invisible, so the correction is a hue and
+     a chroma together: card 1.249:1 on the ground (was 1.251), input 1.388:1 on the card
+     (was 1.397), label 13.96:1 on the card (was 13.94). Nothing that mattered moved.
+     Changing one of these without the other two breaks the shared hue — recompute, do not
+     hand-pick. */
+  --bg: #0b0b0c;
+  --bg-elevated: #22222c;
+  --bg-tertiary: #3a3945;
+
+  /* The nav bar blurs what scrolls under it, which needs --bg carrying an alpha. CSS cannot
+     derive one from a hex variable, so this is --bg by hand: move one and move both. */
+  --bg-blur: rgba(11, 11, 12, 0.72);
+
+  /* Chalk, not pure white. Warmer on a near-black ground and easier to sit in front of for
+     an hour with the wake lock on. 17.44:1 on the ground, 13.96:1 on a card. */
+  --label: #f4f1ea;
+  --label-secondary: rgba(244, 241, 234, 0.62);
+  --separator: rgba(244, 241, 234, 0.14);
+
+  /* Violet, and the two tints are NOT interchangeable — this is the whole reason the accent
+     is split into three tokens. The fill is dark enough to carry white text (6.14:1) but is
+     only 2.57:1 against a card, so it is illegible as text. The text tint is lighter
+     (4.73:1 on a card) and would be washed out as a fill. Use --accent for text and icons,
+     --accent-fill behind --on-accent, and never swap them. */
+  --accent: #8b7cf5;
+  --accent-fill: #5b4bd6;
+  --on-accent: #ffffff;
+
+  /* Pressed state of a filled control. A filled button that fades on press reads as cheap;
+     one that darkens reads as pressed. Measured 7.52:1 with --on-accent, so the label is
+     still legible through the press. */
+  --accent-press: #4e40bd;
+
+  /* The bright tip of the rest ring and nothing else: --accent mixed 35% towards white, so
+     it is the same violet lit rather than a second colour. 9.42:1 on the ground. */
+  --accent-bright: #b4aaf9;
+
+  /* The two kinds of training the app names, and they are luminance-MATCHED rather than
+     merely both legible: --cat-cardio measures 4.75:1 on a card against --cat-lift's 4.73,
+     and 3.42:1 on --bg-tertiary against 3.40. That is the point of the pair — a cardio
+     glyph and a lift glyph have to weigh the same, or a category starts reading as a
+     priority. Cyan at its natural brightness measured 5.8:1 on the card and did exactly
+     that, so this one is darkened until it does not. The hue sits 91 deg off the accent,
+     which is the whole distinction.
+
+     Hue is never the only carrier. Everywhere these are used the GLYPH differs too, and
+     rest takes --label-secondary rather than a third hue — so the set stays readable in
+     greyscale and stops at two colours. A third and a fourth were considered and dropped:
+     a screen you scan for ten seconds cannot hold four colour meanings. */
+  --cat-lift: var(--accent);
+  --cat-cardio: #0a98c7;
+
+  /* The tinted ground each tint paints — an activity thumbnail, a planner tile, a row glyph.
+     Each is its tint written out by hand with an alpha, for the same reason --bg-blur is
+     --bg by hand: CSS cannot derive one from a hex variable. MOVE ONE AND MOVE BOTH.
+     The 0.24 is not taste: it lands a tinted tile and the glyph on it at the figures the
+     neutral --bg-tertiary box already had — 1.40:1 and 1.43:1 on a card against 1.39, and
+     3.39:1 and 3.32:1 for the glyph against 3.40. Tinted, not raised, not dimmed. */
+  --cat-lift-dim: rgba(139, 124, 245, 0.24);
+  --cat-cardio-dim: rgba(10, 152, 199, 0.24);
+
+  --success: #30d158;
+  --danger: #ff5c50;
+
+  --sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+
+  /* Two faces, and the split is by SIZE, not by meaning. SF renders body copy and labels,
+     where it is optically tuned for this screen and switching would gain nothing. Inter
+     renders the three display sizes below, which are the only places a face has visible
+     personality — and which are almost all numbers you read at arm's length mid-set.
+     The rule is mechanical so it stays checkable: every rule that sets --fs-headline,
+     --fs-display or --fs-numeral also sets --display, and nothing else does.
+
+     One consequence, and it is deliberate: `.navbar-inline .navbar-title` overrides only the
+     SIZE, so a collapsed bar — and the whole workout flow, which is `compact` — keeps Inter
+     at 17px. Sending it back to SF there would change the face mid-scroll, which is far more
+     visible than one title sitting in a different face from the body copy beneath it. */
+  --display: 'Inter', var(--sans);
+
+  /* Type scale. Anchored at 17px — the iOS body size — and deliberately short: seventeen
+     distinct sizes were in use before this, which is what made the screens read as a stack
+     of unrelated blocks rather than one product. The two display sizes are reserved for the
+     numbers you read at arm's length mid-set: the rest timer and the stepper. */
+  --fs-caption: 11px;
+  --fs-micro: 13px;
+  --fs-meta: 15px;
+  --fs-body: 17px;
+  --fs-title: 20px;
+  --fs-headline: 28px;
+  --fs-display: 34px;
+  --fs-numeral: 56px;
+
+  /* Radius scale. --radius is the card and the grouped list; anything smaller sits inside
+     one, anything larger is a control you press. */
+  --radius-xs: 3px;
+  --radius-sm: 8px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  /* Depth on a near-black ground comes from the top edge, not from a shadow: black cast onto
+     #0b0b0c has nowhere to go. One specular hairline along the top of a raised surface is
+     what makes it read as a plane catching light instead of a fill painted on the ground.
+     Chalk-tinted like every other light in this palette, never pure white. */
+  --edge-highlight: inset 0 0.5px 0 rgba(244, 241, 234, 0.09);
+
+  /* A decisive ease-out, in the same family as the sheet's own curve. `ease` was used for
+     everything and it eases IN as well, so a control took time to start responding — which
+     is exactly the wrong half of the curve for something answering a finger. */
+  --ease-out: cubic-bezier(0.2, 0, 0.1, 1);
+
+  /* The edge highlight asserts a plane catching light and then stops at the top hairline.
+     This carries the same claim a few pixels further down: chalk at 2.6% fading out by 44%
+     of the card's TOP EDGE. The distance is in pixels and not a percentage on purpose: at
+     44% this fades over 110px of a 250px coach card, which is the intent, and over 2,900px
+     of a Library list holding a hundred rows, which tints the whole first half of a scroll
+     and is not an edge highlight at all. A fixed 120px behaves the same on both.
+     Same light, same tint, same reasoning — it is the highlight's falloff, not a second
+     idea.
+
+     THE ALPHA IS SET BY THE ACCENT, NOT BY TASTE. --accent is the tightest text pair on a
+     card at 4.73:1, so lifting the surface under it eats that margin directly: 0.026 was
+     tried first and measured 4.41:1, under the 4.5 AA floor, on every accent row sitting
+     near the top of a card — Plan's "Swap exercise…", Library's "Clear", the exercise name
+     in History's set table. At 0.014 the figures are --accent 4.56:1, --label 13.47:1 and
+     --label-secondary 6.08:1, all clear, for a 14.7% relative lift in luminance at the top
+     edge. Raising it means re-measuring the accent, not eyeballing the gradient. */
+  --surface-sheen: linear-gradient(180deg, rgba(244, 241, 234, 0.014), rgba(244, 241, 234, 0) 120px);
+
+  --navbar-h: 44px;
+  --tabbar-h: 50px;
+
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+
+  /* The page rail. Every screen-level element starts here — section headers, cards, search
+     fields, full-width buttons — and a row's own padding takes content one step further in
+     to 32. Those are the only two left edges an element may sit on. It was a bare 16px in
+     thirteen places, which is how three separate near-misses survived: Library's filter
+     labels and Settings' note at 20 (a stray --sp-1 of padding), and Plan's add-exercise
+     button at 28 (a bare .btn's own 12px), each lining up with nothing. */
+  --gutter: 16px;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* The background on `html` is not a duplicate of the one on `body` below, and it is not
+   decorative — it is the only thing a transparent root would not give the status bar
+   sampler. From Safari 26 a standalone app with `black-translucent` + `viewport-fit=cover`
+   has its safe-area inset filled with a Liquid Glass blur whenever WebKit cannot sample a
+   SOLID colour at the page's top edge, and at scrollY 0 it falls back to the root's colour.
+   A transparent root is what that band is made of. See the nav bar note below for the other
+   half of the same rule. */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+}
+
+/* Scroll runway — 1px of document overflow, with main.jsx scrolling to it once on load.
+   `.app` is 100dvh and `.screen` is the scroller, so the DOCUMENT can never scroll and
+   window.scrollY sits at 0 for the life of the app. That is the state in which WebKit uses
+   its fallback colour for the top inset rather than compositing real page pixels behind it,
+   so the Liquid Glass band above is permanent rather than something a scroll clears. One
+   pixel is enough to leave that state; the scroll cancels it visually and nothing moves.
+   This is a different scroller from the one `lib/navbar.js` watches — the collapse
+   hysteresis reads `.screen` and is untouched by this. */
+body::after {
+  content: '';
+  display: block;
+  height: 1px;
+}
+
+body {
+  font-family: var(--sans);
+  font-size: var(--fs-body);
+  line-height: 1.35;
+  color: var(--label);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#root {
+  height: 100%;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tabular figures belong to the STYLE, not to the call site. `.tnum` above was the only
+   way a number got them, which made alignment something each new span had to remember and
+   meant a column of weights drifted the moment one was added without it. Every style below
+   renders a number that changes; the utility stays as the escape hatch for a bare span.
+
+   Any number that moves needs these: proportional figures give `1` a narrower advance than
+   `8`, so `32 min` over `60 min` in a column, or a set of weights down a card, sit on
+   different x positions row to row. */
+.row-value,
+.row-label .subtitle,
+.logger-target,
+.logger-last,
+.session-chip,
+.set-count,
+.col-set,
+.col-last,
+.perf-set,
+.perf-value,
+.prog-target,
+.prog-change,
+.coach-meta,
+.coach-target-value,
+.rest-of,
+.rest-next-target,
+.sheet-pace,
+.summary-of,
+.ex-stat-value,
+.ex-stat-note,
+.ex-session-date,
+.ex-session-sets,
+.ex-trend,
+.block-marker-count,
+.block-marker-dates,
+.block-change-value,
+.week-counts,
+.week-meta,
+.wk-day-detail,
+.wk-week,
+.mix-count,
+.consistency-line,
+.consistency-note,
+.week-facts,
+.stepper-value,
+.browser-count,
+.weight-hint {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A long press on a control used to raise iOS text selection — the magnifier, the handles
+   and the Copy callout — over a button label. Native apps do not do that, and a slow tap on
+   `Complete set` mid-set is enough to trigger it. `-webkit-tap-highlight-color` above only
+   suppresses the flash on tap and does nothing about this. Every control in the app is a
+   real <button>, chips and rows included, so one selector covers all of them.
+
+   Typed text is explicitly exempt and must stay that way: the stepper's field is a sibling
+   of two buttons rather than a child of one today, so it is not caught, but nesting one
+   later would silently break selecting what you are editing. */
+button {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Nothing but .search had a focus ring, which left keyboard and Switch Control users with
+   no idea where they were.
+
+   There is deliberately NO border-radius here. It was 6px, and `border-radius` in this rule
+   does not round the outline — it rounds the ELEMENT, for as long as it has focus. A chip
+   at --radius-pill and the circular .tick and .big-stepper-btn all squared off to a 6px
+   rectangle the moment they were focused. An outline follows the element's own radius on
+   its own, so taking the declaration out is the whole fix and every control keeps its
+   shape. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* .list clips to its own corners, so an outline drawn 2px OUTSIDE a row inside it is cut
+   off along both edges and the ring reads as two floating lines. Inside the row instead. */
+.list :focus-visible {
+  outline-offset: -2px;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  height: 100dvh;
+}
+
+.screen {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Only 24px of breathing room. The tab bar is a flex sibling of `.screen` inside `.app`, not
+   an overlay — it has no `position` — so `.screen` already ends where the tab bar begins and
+   the tab bar covers the home indicator with its own `padding-bottom`. Reserving
+   `--tabbar-h + safe-area` here as well double-counted both and left ~108px of dead scroll
+   below the last row of every screen. */
+.screen-body {
+  padding: var(--sp-2) var(--gutter) var(--sp-6);
+}
+
+/* A workout hides the tab bar, so `.screen` runs to the bottom of `.app` and has to clear the
+   home indicator itself — the job the tab bar's own padding normally does. This ADDS the
+   inset; it does not remove a reservation. */
+.screen-modal .screen-body {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 24px);
+}
+
+/* The height comes from the flex column, NOT `min-height: 100%` on the body: `.screen` holds
+   the sticky nav bar and the body as siblings, so 100% overflows by exactly the nav bar. */
+.screen-modal {
+  display: flex;
+  flex-direction: column;
+}
+
+.workout-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Nav bar ---- */
+/* The bar is OPAQUE at rest, and the blur belongs to `.navbar-scrolled` below. Do not move
+   the backdrop-filter back up here, and the reason is the STATUS BAR, not this element:
+   from Safari 26 the system scans `fixed`/`sticky` elements near the viewport top and reads
+   their `background-color` and `backdrop-filter` to decide whether it can sample a solid
+   colour at the page's top edge. It cannot when this bar is translucent and filtered, so it
+   fills the safe-area inset with a Liquid Glass band instead — which reads as the whole top
+   of the app being softly blurred, and gives way to real pixels the moment you overscroll.
+   Unscrolled there is nothing behind the bar to see through to anyway, so the frosting cost
+   the top of every screen and bought nothing. */
+.navbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg);
+  padding-top: env(safe-area-inset-top);
+}
+
+/* The bar used to be opaque with no bottom edge, so content slid under it with nothing
+   separating the two. The hairline is a box-shadow rather than a border because the logger's
+   layout is a measured budget — a border here would take half a pixel off every screen's
+   fold. It appears only once scrolled, which is the same threshold the title collapses on
+   and is set by the same flag — and the frosting is now on that same flag, for the same
+   reason: both are about there being content behind the bar, not about the title. */
+.navbar-scrolled {
+  box-shadow: 0 0.5px 0 var(--separator);
+  background: var(--bg-blur);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+}
+
+.navbar-inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--navbar-h);
+  padding: 0 var(--gutter);
+}
+
+.navbar-large {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--gutter) var(--sp-2);
+}
+
+/* margin: 0 is load-bearing. An <h1> carries ~0.67em of default margin top and bottom, which
+   at 34px is ~46px of dead space above the fold on every screen — and the logger is measured
+   against a 793px viewport. Setting the spacing on .navbar-large instead makes it explicit.
+   Long exercise names wrap rather than overflow, and the title truncates to two lines. */
+.navbar-title {
+  font-family: var(--display);
+  font-size: var(--fs-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: var(--label);
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Today's lockup. `min-width: 0` has to be repeated here because this container is now the
+   flex child `.navbar-title` used to be, and without it a long title cannot shrink. The date
+   below is the old `.today-date`, moved out of the screen body — the wordmark therefore costs
+   no height, it spends what the date already occupied. */
+.navbar-heading {
+  min-width: 0;
+}
+
+.navbar-lockup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.navbar-lockup svg {
+  flex: none;
+  color: var(--accent);
+}
+
+.navbar-subtitle {
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--label-secondary);
+  margin: 4px 0 0;
+}
+
+.navbar-inline .navbar-title {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.navbar-inline {
+  gap: var(--sp-3);
+}
+
+.navbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ---- Buttons ---- */
+.btn {
+  font-family: inherit;
+  font-size: var(--fs-body);
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 8px 12px;
+  min-height: 44px;
+  min-width: 44px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.btn:active {
+  opacity: 0.4;
+}
+
+.btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.btn-destructive {
+  color: var(--danger);
+}
+
+.btn-primary {
+  display: block;
+  width: 100%;
+  font-family: inherit;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--on-accent);
+  background: var(--accent-fill);
+  border: none;
+  border-radius: var(--radius);
+  padding: 14px;
+  min-height: 50px;
+  cursor: pointer;
+  box-shadow: var(--edge-highlight);
+}
+
+.btn-primary:active {
+  background: var(--accent-press);
+}
+
+/* ---- The card ---- */
+/* Every raised surface in the app, in one rule. There were six of them and they shared
+   almost nothing: three internal paddings (12, 16, 20), two radii (--radius and a bare 16px
+   on the sheet) and the edge highlight on only three of the six. Nothing about one card
+   predicted the next, which is the kind of inconsistency a person feels as unfinished
+   without being able to name it.
+
+   Radius is --radius-lg. It was --radius (10) while `.btn-primary` inside these same cards
+   was --radius-lg (14) — an inner element rounder than the container holding it, which
+   reads as a fault even to someone who cannot say why. The button moved down to --radius
+   and the cards moved up, so nesting now runs the right way at every depth: card 14,
+   button 10, thumbnail and inner field 8.
+
+   A border is NOT part of this recipe and must not become one. `.coach-card` carries a
+   hairline and `.week-card` deliberately does not — that difference is the entire signal
+   for which of the two to read first, and handing every interactive surface a border would
+   erase it. Interactivity is said by the pressed state, which every one of these has. */
+.list,
+.coach-card,
+.week-card,
+.banner,
+.progression-card,
+.why-card,
+.sheet {
+  background-color: var(--bg-elevated);
+  background-image: var(--surface-sheen);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--edge-highlight);
+}
+
+/* ---- Grouped inset list ---- */
+/* Row padding stays 11px and is not on the 4pt grid on purpose: 11 + 23 (a 17px title at
+   line-height 1.35) + 11 is what lands the row on its 44pt minimum. 12 would make every
+   list in the app taller for nothing. */
+.list {
+  overflow: hidden;
+  margin-bottom: var(--sp-4);
+}
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 11px var(--gutter);
+  gap: 12px;
+}
+
+/* A row is a row whether it is rendered as a div or a button. Six call sites repeated this
+   same reset inline, and `border: none` in an inline style out-specifies any stylesheet
+   rule — which is why every list built from tappable rows was silently drawing NO
+   separators at all. The separator below is a pseudo-element for that reason: it cannot be
+   cancelled by an element reset. */
+button.row {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* The row was the one tappable thing in the app with no pressed state — chips, steppers and
+   the week card all had one. It is also the most-tapped control there is, so a tap that
+   opened a sheet 200ms later had nothing to say it had registered. A background rather than
+   the 0.96 scale the smaller controls use: a full-width row that shrinks pulls away from
+   the separators above and below it. */
+button.row:active {
+  background: var(--bg-tertiary);
+}
+
+/* Inset to the row's own leading padding rather than running edge to edge, so a group reads
+   as one object with divided contents instead of a stack of separate bands. */
+.row + .row::before,
+.disclosure-body > .row:first-child::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: var(--gutter);
+  right: 0;
+  height: 0.5px;
+  background: var(--separator);
+  pointer-events: none;
+}
+
+/* A value you TYPE, in a grouped row — the iOS form field. The row already draws the label,
+   the separator and the 44pt minimum, so the input brings nothing but the text: no border,
+   no fill, no radius of its own. It is right-aligned because that is where `.row-value` and
+   `Selector`'s own value sit, so a column of them lines up whatever the control is.
+   The global :focus-visible ring is what marks it while typing; inside a `.list` that ring
+   is already inset so the clipped corners do not cut it. A date input keeps its intrinsic
+   width, because WebKit draws its own segmented control there and a fixed width clips it. */
+.row-field {
+  font: inherit;
+  font-size: var(--fs-body);
+  color: var(--label);
+  background: none;
+  border: none;
+  text-align: right;
+  width: 140px;
+  /* The row's own 11px of padding, taken back as the input's — so the tap area is the full
+     height of the row rather than the 22px of text inside it. Without it the label is a
+     44pt target and the thing you actually came to tap is half that. */
+  padding: 11px 0;
+  margin: -11px 0;
+}
+
+.row-field[type='date'] {
+  width: auto;
+}
+
+.row-field::placeholder {
+  color: var(--label-secondary);
+}
+
+/* A numeric keypad comes from inputMode, not from the type, so the spinners are pure noise
+   in a row that has no room for them. */
+.row-field::-webkit-outer-spin-button,
+.row-field::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* A date input is not a text input in iOS Safari. It carries its own intrinsic width, which
+   is why the rule above hands it `width: auto` rather than fighting it, and it CENTRES its
+   value while every other row field is right-aligned — so the date would sit off the column
+   every other value lines up on. Strip the native appearance and pin the value right. */
+.row-field[type='date'] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+}
+
+.row-field[type='date']::-webkit-date-and-time-value {
+  text-align: right;
+  margin: 0;
+}
+
+.row-chevron {
+  margin-left: auto;
+  color: var(--label-secondary);
+  flex-shrink: 0;
+}
+
+.row-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.row-label .title {
+  color: var(--label);
+}
+
+.row-label .subtitle {
+  color: var(--label-secondary);
+  font-size: var(--fs-micro);
+}
+
+/* A row carries up to three tiers of information and they must not read alike: the TITLE
+   is what the row is, the SUBTITLE is metadata about it, and the VALUE is either more
+   metadata or the one number the row exists to report.
+
+   Plain `.row-value` is the metadata case — a date, a weekday, a prescription — and stays
+   secondary at body size so it cannot outrank the title. `.metric` is the other case: a
+   duration, a distance, a count. It was rendered identically to the metadata tier, four
+   pixels from the subtitle and in the same dimmed grey, which left a training log where
+   the loudest thing in every row was the word and the quietest was the number. */
+.row-value {
+  color: var(--label-secondary);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A metric never wraps and never shrinks. Letting it do either breaks a single quantity
+   across two lines, which is worse than a title wrapping — the title is prose and can take
+   it; "60 kg" split over two lines stops being a number you can read at a glance. */
+.row-value.metric {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: var(--fs-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--label);
+}
+
+/* THE eyebrow. Every uppercase micro-label in the app is this rule and there is no second
+   copy of it — the declaration block below was previously pasted into eleven selectors and
+   three had already drifted: `.coach-kind` at 13px/0.06em and tinted accent, and
+   `.timeline-lead` at 13px sitting directly above an 11px `.section-header` on History,
+   which put two sizes of the same idea three pixels apart at the top of the screen.
+   A label here is passive by definition, so it is never accent-coloured: the one tinted
+   variant left is `.wk-day[data-today]`, where the colour is marking today rather than
+   decorating the label.
+
+   The one deliberate exception is `.navbar-subtitle`, which stays at --fs-micro: it is set
+   against a 34px display title in the bar's own hierarchy, not a section break in a screen
+   body, and 11px under 34px reads as a caption that got lost. */
+.section-header,
+.caption,
+.filter-label,
+.coach-kind,
+.timeline-lead,
+.ex-stat-label,
+.logger-progress,
+.set-table-head,
+.rest-caption,
+.rest-next-set,
+.summary-stat .label,
+.big-stepper-label,
+.wk-day-name,
+.planner-name {
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--label-secondary);
+}
+
+/* Only a section break pays its own leading. The rail labels that joined the rule above sit
+   inside cards and rows that have already paid theirs — they were two rules with two
+   different left indents once, which is how the same idea landed on two rails depending on
+   which component drew it. */
+.section-header,
+.caption {
+  padding: var(--sp-5) 0 var(--sp-2);
+}
+
+/* ---- Tab bar ---- */
+.tabbar {
+  display: flex;
+  background: var(--bg-elevated);
+  border-top: 0.5px solid var(--separator);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.tabbar-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 0 4px;
+  min-height: var(--tabbar-h);
+  color: var(--label-secondary);
+  font-size: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+/* The selected tab said itself in hue alone — --accent against --label-secondary on a 10px
+   label and a 26px glyph. Hue is the one channel that fails in bad light and for a
+   colour-vision deficiency, so the state now carries weight as well: the label goes to 600
+   and the glyph takes Icon's `strong` stroke. Cover the screenshot in greyscale and the
+   selected tab is still the obvious one, which is the test this had to pass. No indicator
+   bar and no filled pill — the tab bar is a flex sibling of the scroller, not an overlay,
+   and it has no business drawing more furniture than the state needs. */
+.tabbar-item.active {
+  color: var(--accent);
+}
+
+.tabbar-item.active span {
+  font-weight: 600;
+}
+
+/* ---- Sheet ---- */
+/* Black, and deliberately outside the palette: a scrim is an absence of light rather than
+   a surface, so tinting it with --bg would cast the app's violet over whatever it covers
+   instead of dimming it. This is the one place pure black is correct. */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  z-index: 100;
+}
+
+.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 101;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: var(--sp-2) var(--gutter) calc(var(--sp-4) + env(safe-area-inset-bottom));
+  max-height: 90dvh;
+  overflow-y: auto;
+}
+
+.sheet-grabber {
+  width: 36px;
+  height: 5px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-tertiary);
+  margin: 6px auto 12px;
+}
+
+.sheet-title {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  text-align: center;
+  margin: 0 0 12px;
+}
+
+/* ---- History timeline ---- */
+.timeline-lead {
+  margin: var(--sp-2) 0 0;
+}
+
+/* A closed block, marking where it ended in the stream. Not a card: it is a rule across the
+   timeline with the retrospective under it, so it reads as a boundary between two stretches
+   of training rather than as another entry competing with them. */
+.block-marker {
+  border-top: 0.5px solid var(--separator);
+  padding: var(--sp-5) 0 var(--sp-4);
+  margin-bottom: var(--sp-4);
+}
+
+.block-marker-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.block-marker-title {
+  font-size: var(--fs-title);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.block-marker-count,
+.block-marker-dates {
+  font-size: var(--fs-micro);
+  color: var(--label-secondary);
+}
+
+.block-marker-dates {
+  margin-top: 2px;
+}
+
+.block-changes {
+  margin-top: var(--sp-3);
+}
+
+.block-change {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-1) 0;
+}
+
+.block-change-name {
+  font-size: var(--fs-meta);
+  color: var(--label-secondary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.block-change-value {
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.block-change-value.up {
+  color: var(--success);
+}
+
+/* Explicit rather than absent: a block where a lift came down is a fact, and it is not
+   printed in a warning colour. Leaving the class unstyled would read as an oversight. */
+.block-change-value.down {
+  color: var(--label-secondary);
+}
+
+/* ---- Exercise detail ---- */
+/* Two numbers side by side, both facts. Neither is a badge: same weight of type as the
+   session rows below them, no fill, no colour on the increase. */
+.ex-stats {
+  display: flex;
+  gap: var(--sp-4);
+  padding: var(--sp-5) 0 var(--sp-2);
+}
+
+.ex-stat {
+  flex: 1;
+  min-width: 0;
+}
+
+.ex-stat-value {
+  font-size: var(--fs-title);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-top: var(--sp-1);
+}
+
+.ex-stat-note {
+  font-size: var(--fs-micro);
+  color: var(--label-secondary);
+  margin-top: 2px;
+}
+
+.ex-target {
+  font-family: var(--display);
+  font-size: var(--fs-headline);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.ex-reason {
+  color: var(--label-secondary);
+  font-size: var(--fs-meta);
+  margin: var(--sp-1) 0 0;
+}
+
+/* Date left, the sets as they were logged right — the same shape as the session strip in
+   the logger, so a row here reads the way the row you typed it into did. */
+.ex-session {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  min-height: 44px;
+}
+
+.ex-session + .ex-session {
+  border-top: 0.5px solid var(--separator);
+}
+
+.ex-session-date {
+  color: var(--label-secondary);
+  font-size: var(--fs-meta);
+  flex-shrink: 0;
+}
+
+.ex-session-sets {
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  text-align: right;
+  min-width: 0;
+}
+
+/* The exercise name in a workout's set table is the way into that exercise's full record,
+   so it has to look like a control and take a thumb. */
+.ex-open {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-weight: 600;
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: var(--sp-2) 0 var(--sp-1);
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.ex-trend {
+  color: var(--label-secondary);
+  font-size: var(--fs-micro);
+  margin: var(--sp-1) 0 0;
+}
+
+.ex-about {
+  color: var(--label-secondary);
+  font-size: var(--fs-meta);
+  margin: 0 0 var(--sp-2);
+}
+
+.ex-empty {
+  color: var(--label-secondary);
+  font-size: var(--fs-meta);
+  margin: var(--sp-5) 0 0;
+}
+
+/* ---- Exercise image ---- */
+.exercise-image {
+  width: min(100%, 30vh);
+  margin: 0 auto;
+  aspect-ratio: 1;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+/* The same treatment, deliberately gentler. This one is the content rather than an
+   identifier — you are reading it to see how the movement goes — so it keeps more of its
+   range: rgb(213) and 13.4:1 on the ground, down from an untrimmed rgb(255) and 19.7:1.
+   It carried no filter at all, which put a 30vh white square in the middle of a dark
+   screen wherever the media shows. */
+.exercise-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: brightness(0.82) contrast(1.05) saturate(1.1);
+}
+
+.exercise-image .placeholder {
+  color: var(--label-secondary);
+  font-size: var(--fs-meta);
+}
+
+/* The dataset's art is line drawing on solid white, so a column of these is a column of
+   lit squares on a near-black ground — they read louder than the exercise names they
+   belong to. The hairline gives the box an edge and the brightness trim hands the emphasis
+   back to the text.
+
+   THE TRIM WAS TOO GENTLE TO DO THAT, BY ABOUT A FACTOR OF TWO. brightness(0.88)
+   contrast(1.06) puts the white ground at rgb(230), which is 12.6:1 against a card — the
+   exercise name beside it is 13.96:1. A 48px block was sitting at 90% of the contrast of
+   the title it belongs to, up to a hundred times down the Library list, which is the whole
+   "white sticker" effect. At brightness(0.70) the ground lands at rgb(183) and 7.8:1,
+   a little over half the title's, and the drawing is still plainly legible.
+   Saturation is raised because darkening desaturates: the red muscle highlight is what
+   carries the actual information and it must survive the trim. */
+.thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  flex-shrink: 0;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 0.5px var(--separator);
+}
+
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: brightness(0.7) contrast(1.08) saturate(1.15);
+}
+
+.thumb .placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--label-secondary);
+}
+
+/* An activity has no photograph to show, so it gets a drawn glyph in the same box — and the
+   box is tinted to its category, which is what tells a run from a lift going down History's
+   merged timeline without reading a word of it.
+
+   The tinted ground is --cat-cardio-dim, where the alpha and its measurements live. The
+   glyph on it reads 3.39:1 — over the 3:1 bar for a graphical object, which a 26px glyph at
+   2px stroke is, and under the 4.5:1 text bar, which it is not. */
+.thumb-activity {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--cat-cardio-dim);
+  color: var(--cat-cardio);
+}
+
+/* ---- Workout screen ---- */
+.workout-hero {
+  padding: 4px 0 16px;
+}
+
+/* ---- Single-set logger: the context block ---- */
+/* Where you are, in one row. Both counts on one line rather than one at the top of the
+   screen and one at the bottom, which is where they used to sit — the second was below the
+   fold on every set past the first. */
+.logger-progress {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.logger-bar {
+  display: flex;
+  gap: 3px;
+  margin: var(--sp-2) 0 var(--sp-4);
+}
+
+.logger-bar-seg {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--separator);
+}
+
+.logger-bar-seg[data-state='done'] {
+  background: var(--accent);
+}
+
+/* The exercise in progress reads as neither finished nor untouched. --bg-tertiary is the
+   same surface the steppers sit on, so it is visible without competing with the accent. */
+.logger-bar-seg[data-state='current'] {
+  background: var(--bg-tertiary);
+}
+
+/* The number you are chasing. Largest thing on screen after the stepper values themselves. */
+.logger-target {
+  font-family: var(--display);
+  font-size: var(--fs-headline);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--label);
+  margin: 0;
+}
+
+.logger-last {
+  color: var(--label-secondary);
+  font-size: var(--fs-meta);
+  margin: var(--sp-1) 0 0;
+}
+
+/* One line per set. The two stacked steppers this replaces cost ~90px per set and pushed
+   the workout screen past a single phone height; the grid holds three sets in ~140px.
+   Columns: number, last time, kg, reps, tick. */
+.set-table {
+  margin-bottom: var(--sp-3);
+}
+
+.set-table-head,
+.set-table-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 70px 62px 44px;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.set-table-head {
+  padding-bottom: var(--sp-2);
+}
+
+/* The kg and reps headers must centre over their inputs, which are centre-aligned; left
+   alignment left both labels floating off the left edge of the cell below them. */
+.set-table-head .col-num {
+  text-align: center;
+}
+
+.set-table-row {
+  min-height: 52px;
+}
+
+.set-table-row + .set-table-row {
+  border-top: 0.5px solid var(--separator);
+}
+
+.set-table-row .col-set {
+  color: var(--label-secondary);
+  font-size: var(--fs-meta);
+  font-weight: 600;
+}
+
+.set-table-row .col-last {
+  color: var(--label-secondary);
+  font-size: var(--fs-micro);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Committed on blur, never per keystroke — see NumCell. */
+.num-cell {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 var(--sp-1);
+  font-family: inherit;
+  font-size: var(--fs-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--label);
+  background: var(--bg-tertiary);
+  border: none;
+  border-radius: var(--radius-sm);
+  text-align: center;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.num-cell::-webkit-outer-spin-button,
+.num-cell::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.num-cell:disabled {
+  background: none;
+  color: var(--label-secondary);
+  opacity: 1;
+}
+
+.tick {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid var(--label-secondary);
+  background: none;
+  color: var(--label-secondary);
+  font-size: var(--fs-title);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+/* The glyph is the ground colour, not white. White on --success measures 2.02:1 — under
+   the 3:1 a meaningful graphical object needs, and this one means "this set is logged",
+   read mid-set in whatever light the gym has. The fill going green is the other half of
+   the signal, but it cannot be the only half. --bg on the same fill is 9.73:1. */
+.tick.done {
+  background: var(--success);
+  border-color: var(--success);
+  color: var(--bg);
+  animation: tick-pop 0.26s ease-out;
+}
+
+.set-count {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-2) 0;
+  color: var(--label-secondary);
+  font-size: var(--fs-micro);
+}
+
+/* ---- Rest, full screen ---- */
+.rest-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-6);
+  padding-top: var(--sp-6);
+  flex: 1;
+}
+
+/* Ring and next-set are one group and centre together in whatever height is left; the
+   adjustments sit at the bottom of the screen. Splitting the three evenly instead would
+   untether the ring from the target it is counting down towards. */
+.rest-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-6);
+}
+
+.ring {
+  position: relative;
+  flex-shrink: 0;
+  transition: --sweep 0.2s linear;
+}
+
+/* Registered so the sweep can transition: an unregistered custom property is a string and
+   jumps. The ring redraws every 200 ms tick, and at a 60 s rest that is a 2 px step. */
+@property --sweep {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+
+/* A ring is a filled square cut to a band by a radial mask — the half pixel either side of
+   each edge is the antialiasing. */
+.ring-band {
+  position: absolute;
+  inset: 0;
+  -webkit-mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - var(--stroke) - 0.5px),
+    #000 calc(100% - var(--stroke)),
+    #000 calc(100% - 0.5px),
+    transparent 100%
+  );
+  mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - var(--stroke) - 0.5px),
+    #000 calc(100% - var(--stroke)),
+    #000 calc(100% - 0.5px),
+    transparent 100%
+  );
+}
+
+.ring-track {
+  background: var(--bg-elevated);
+}
+
+/* The one gradient in the app, on the largest element in it, and it runs along the arc: dark
+   where the arc starts, lit at the tip that moves. --accent-fill is 3.21:1 on the ground the
+   ring sits on — over the 3:1 bar for a graphical object, so the dark end stays legible. All
+   three stops are accent tints: a sweep out of the palette would read as a second colour
+   rather than as depth. */
+.ring-fill {
+  background: conic-gradient(
+    var(--accent-fill) 0deg,
+    var(--accent) calc(var(--sweep) * 0.6),
+    var(--accent-bright) var(--sweep),
+    transparent var(--sweep)
+  );
+}
+
+/* Round ends, one per edge of the conic. Each sits on the band's centreline at twelve
+   o'clock and the tip is swung round the ring's centre to the end of the sweep. */
+.ring-cap {
+  position: absolute;
+  top: 0;
+  left: calc(50% - var(--stroke) / 2);
+  width: var(--stroke);
+  height: var(--stroke);
+  border-radius: 50%;
+  transform-origin: 50% calc(var(--size) / 2);
+}
+
+.ring-cap-start {
+  background: var(--accent-fill);
+}
+
+.ring-cap-tip {
+  background: var(--accent-bright);
+  transform: rotate(var(--sweep));
+}
+
+.ring-content {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.rest-time {
+  font-family: var(--display);
+  font-size: var(--fs-numeral);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.rest-time.complete {
+  font-family: var(--display);
+  font-size: var(--fs-display);
+  color: var(--accent);
+}
+
+.rest-of {
+  font-size: var(--fs-meta);
+  color: var(--label-secondary);
+}
+
+.rest-next {
+  text-align: center;
+}
+
+/* The "Next" caption is gone: two lines that read "Set 2 of 3 / 80 kg × 8–12" under a
+   running timer do not need a word telling you they are what comes next. */
+.rest-next-target {
+  font-size: var(--fs-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-top: var(--sp-1);
+}
+
+.rest-actions {
+  display: flex;
+  align-self: stretch;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.rest-actions .btn {
+  flex: 1;
+  min-width: 0;
+  min-height: 52px;
+  padding: 8px 4px;
+}
+
+.next-up {
+  color: var(--label-secondary);
+  font-size: var(--fs-meta);
+  padding: var(--sp-4) 0;
+}
+
+/* ---- Summary ---- */
+.summary-stats {
+  display: flex;
+  justify-content: space-around;
+  padding: 20px 0;
+}
+
+.summary-stat {
+  text-align: center;
+}
+
+.summary-stat .value {
+  font-family: var(--display);
+  font-size: var(--fs-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-of {
+  font-size: var(--fs-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--label-secondary);
+}
+
+.summary-note {
+  color: var(--label-secondary);
+  font-size: var(--fs-meta);
+  padding: var(--sp-3) 0;
+}
+
+.summary-stat .label {
+  margin-top: var(--sp-1);
+}
+
+/* ---- Empty state ---- */
+/* `text-wrap: balance` on the three short headings only — it stops one orphaned word on a
+   last line, which is what makes a card look unconsidered. A browser without it ignores the
+   declaration and renders exactly as before. `.navbar-title` is deliberately NOT in the set:
+   it wraps long exercise names under a measured layout that has been got wrong twice, and
+   moving where it breaks is not worth it for a bar you read for half a second. */
+/* Only a screen with nothing on it gets one of these. `.ex-empty` is the other empty and it
+   stays a bare sentence: it sits inside a sheet that is otherwise full, where a glyph would
+   be one more thing to look at rather than an answer to an empty screen. */
+.empty-state {
+  text-align: center;
+  padding: var(--sp-8) var(--sp-4);
+}
+
+/* Dimmer than the text it sits above — it says which screen you are on, and the title says
+   what to do about it. At full --label-secondary it out-weighed both lines. */
+.empty-glyph {
+  display: block;
+  color: var(--label-secondary);
+  opacity: 0.55;
+  margin-bottom: var(--sp-3);
+}
+
+.empty-state .empty-title {
+  text-wrap: balance;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--label);
+  margin: 0 0 var(--sp-1);
+}
+
+.empty-state .empty-body {
+  color: var(--label-secondary);
+  font-size: var(--fs-meta);
+  margin: 0 auto;
+  max-width: 34ch;
+}
+
+/* ---- Banner ---- */
+/* The one card that keeps a compact padding: it is a single line of notice, and 16px top
+   and bottom around 13px type makes a strip that reads as more important than it is. */
+.banner {
+  padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--sp-5);
+  font-size: var(--fs-micro);
+  color: var(--label);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.steps {
+  margin: 0;
+  padding: 0 0 12px 20px;
+  color: var(--label);
+}
+
+.steps li {
+  margin-bottom: 6px;
+}
+
+/* ---- Action sheet ---- */
+.action-sheet-btn {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font-family: inherit;
+  font-size: var(--fs-body);
+  color: var(--accent);
+  background: var(--bg-elevated);
+  border: none;
+  border-top: 0.5px solid var(--separator);
+  padding: 16px;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.action-sheet-btn.destructive {
+  color: var(--danger);
+}
+
+.action-sheet-btn:active {
+  background: var(--bg-tertiary);
+}
+
+.action-sheet-btn:disabled {
+  color: var(--label-secondary);
+  cursor: default;
+  background: var(--bg-elevated);
+}
+
+/* ---- Filter chips / search ---- */
+/* Chip rows wrap: six run types do not fit a phone on one line and must not scroll
+   horizontally inside a sheet that already scrolls vertically. */
+/* The row-gap is larger than the column-gap on purpose: a chip's tap target overhangs its
+   paint by 5px top and bottom, so an 8px row-gap would let two rows' targets overlap and
+   the second row would steal taps aimed at the first. */
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3) var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+
+/* The pace falls out of the two numbers above it, so it is shown as a result rather than as
+   a field — it is the number that says whether the run was the run you meant. */
+.sheet-pace {
+  font-size: var(--fs-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--label-secondary);
+  margin: 0 0 var(--sp-3);
+}
+
+/* A chip is 34px of drawn pill and 44pt of tap target — the same split the toggle uses,
+   and for the same reason: three filter rows of 44px lozenges are the heaviest thing on
+   the Library screen and none of that weight is doing any work. The 44 is still there,
+   in `::after` below; only the paint shrank. The horizontal padding is not the target
+   either, and at 16px it fitted six options into a row that now holds eight. */
+.chip {
+  position: relative;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  font-size: var(--fs-meta);
+  color: var(--label);
+  background: var(--bg-elevated);
+  border: 0.5px solid var(--separator);
+  border-radius: var(--radius-pill);
+  padding: var(--sp-2) var(--sp-3);
+  min-height: 34px;
+  min-width: 44px;
+  cursor: pointer;
+  gap: 6px;
+}
+
+/* The 5px it gives back on each edge is what keeps the target at 44pt. The row it sits in
+   must leave room for this — a scroller clips it, see `.filter-chips` — and any wrapping
+   row needs a row-gap above 10px or two chips' targets overlap and the lower one wins a
+   tap meant for the upper. */
+.chip::after {
+  content: '';
+  position: absolute;
+  inset: -5px 0;
+}
+
+.chip[data-active='true'] {
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+  color: var(--on-accent);
+}
+
+/* --bg-tertiary is a light blue-grey and put the field LIGHTER than the list card under
+   it, so the one thing you type into read as a hole punched in the screen. It sits on the
+   same elevated surface as the chips and the list, and takes its edge from the same
+   hairline, so the three stack as one system instead of three greys. This is the whole-width
+   search box; a value you type BESIDE a label is `.row-field` and brings no box at all. */
+.search {
+  font-family: inherit;
+  font-size: var(--fs-body);
+  color: var(--label);
+  background: var(--bg-elevated);
+  border: 0.5px solid var(--separator);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-3) var(--sp-3);
+  min-height: 44px;
+  width: 100%;
+  margin-bottom: var(--sp-3);
+}
+
+.search:focus {
+  outline: 1.5px solid var(--accent);
+}
+
+/* ---- Settings rows ---- */
+/* The value and the chevron are ours; the <select> is transparent on top of them. See
+   Selector.jsx for why styling the select directly cannot produce an aligned column. */
+.selector {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-1);
+  min-height: 44px;
+  color: var(--label);
+}
+
+.selector-value {
+  font-size: var(--fs-body);
+}
+
+/* Fixed width at the far right, so every value in a column ends at the same x whatever its
+   options are. That is the whole point of the control. */
+.selector-chevron {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--label-secondary);
+  transform: rotate(90deg);
+}
+
+/* opacity, not visibility or display — it has to stay hit-testable so the tap reaches the
+   native picker. */
+.selector-native {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  appearance: none;
+  border: none;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* ---- Toggle ---- */
+.toggle {
+  position: relative;
+  width: 51px;
+  height: 31px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-tertiary);
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.toggle::after {
+  content: '';
+  position: absolute;
+  inset: -7px -4px;
+}
+
+.toggle .knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  /* The two literals in this rule both have a reason and both stay. The knob is white
+     rather than --label because it is a physical puck, not text — the one object in the app
+     that is a light source rather than something lit, and the chalk tint reads as grubby on
+     it. And this is the app's only drop shadow, in the one place the no-shadow rule does
+     not hold: white on --success is 2.02:1, so with the toggle ON the knob and its track
+     are nearly the same luminance and the shadow is all that separates them. Everywhere
+     else a shadow is black cast onto near-black, with nowhere to go. */
+  background: #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.toggle.on {
+  background: var(--success);
+}
+
+.toggle.on .knob {
+  transform: translateX(20px);
+}
+
+/* ---- Block / weight history ---- */
+.delta {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Direction gets a tint and only a tint, and DOWN IS NOT A WARNING COLOUR. This is the
+   block-complete screen's weight changes — the same fact History draws in
+   `.block-change-value` and the finish summary draws in `.prog-change`, both of which
+   deliberately render a drop in the plain secondary grey. This one was red, so the same
+   number was a fact in two places and a failure in the third. A lift coming down across a
+   block is something that happened; the app does not editorialise about it anywhere else
+   and must not here. */
+.delta.up {
+  color: var(--success);
+}
+
+.delta.down {
+  color: var(--label-secondary);
+}
+
+.spark {
+  display: block;
+  width: 100%;
+  height: 40px;
+  margin-top: 8px;
+}
+
+/* ---- Motion ---- */
+/* Every rule here answers a tap. There are no entrance animations, no scroll reveals and no
+   hover effects: motion says what changed, and a screen that moves on its own is a screen
+   arguing with you mid-set. The global prefers-reduced-motion block below turns all of it
+   off, which is why each is a transition on a property rather than a keyframe. */
+/* Press-in and release are not the same event and must not share a duration. Both ran at
+   0.18s, so a control took as long to depress as it took to come back — which reads as
+   lag on the way in and as a control that has already forgotten you on the way out. The
+   base duration here is the RELEASE, and the :active rule below shortens the press to
+   0.09s, because entering a state uses the incoming rule's timing and leaving it uses the
+   base one. Fast in, settled out.
+
+   `width` left this list: only .mix-fill ever animates one, and carrying a width
+   transition on twelve selectors that never change width meant any future layout change to
+   a chip or a row would have animated by accident. */
+.chip,
+button.row,
+.btn-add,
+.filter-chevron,
+.row-chevron,
+.toggle,
+.toggle .knob,
+.btn,
+.btn-primary,
+.week-card,
+.week-day-dot,
+.logger-bar-seg,
+.session-chip,
+.planner-day,
+.planner-tile {
+  transition:
+    background-color 0.22s var(--ease-out),
+    border-color 0.22s var(--ease-out),
+    color 0.22s var(--ease-out),
+    opacity 0.22s var(--ease-out),
+    transform 0.22s var(--ease-out);
+}
+
+.chip:active,
+button.row:active,
+.btn-add:active,
+.toggle:active,
+.btn:active,
+.btn-primary:active,
+.week-card:active,
+.session-chip:active,
+.planner-day:active {
+  transition-duration: 0.09s;
+}
+
+/* The toggle knob is the one thing here that is not a press response — it travels between
+   two settled positions, so it keeps a symmetrical duration in both directions. */
+.toggle .knob,
+.mix-fill {
+  transition: transform 0.22s var(--ease-out), width 0.3s var(--ease-out);
+}
+
+/* The one piece of feedback for logging a set: the chip it becomes settles into place. It
+   is 0.22s and it does not bounce past its own size — a set is recorded, not won. */
+@keyframes chip-settle {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+.session-chip:not(.pending) {
+  animation: chip-settle 0.22s ease-out;
+}
+
+/* The press vocabulary is decided by what the control IS, not by where it sits. A small
+   object you press scales; a surface changes fill; a bare text button fades. The week card
+   was in this group as well as changing opacity, which made it the only control in the app
+   speaking two of the three at once. */
+.big-stepper-btn:active,
+.chip:active {
+  transform: scale(0.96);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes tick-pop {
+  40% {
+    transform: scale(1.18);
+  }
+}
+
+.sheet-backdrop {
+  animation: fade-in 0.2s ease-out;
+}
+
+.sheet {
+  animation: sheet-up 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Session picker — the ago text sits beside the tick on the chosen session. */
+.session-pick-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.hero-sub {
+  color: var(--label-secondary);
+  font-size: var(--fs-meta);
+  margin: var(--sp-1) 0 0;
+}
+
+/* ---- Single-set logger ---- */
+/* Takes the screen's slack so Complete set sits at the bottom of the display rather than
+   wherever the content happened to end. */
+.logger-entry {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* Margins on both sides so adjacent collapsing gives the first stepper a gap above it too,
+   without stacking with its own margin-bottom between the two steppers. */
+.big-stepper {
+  margin-top: var(--sp-3);
+  margin-bottom: var(--sp-6);
+}
+
+.big-stepper-label {
+  padding-bottom: var(--sp-2);
+}
+
+.big-stepper-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.big-stepper-btn {
+  flex: 0 0 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bg-elevated);
+  color: var(--label);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.big-stepper-btn:active {
+  background: var(--bg-tertiary);
+}
+
+.big-stepper-value {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.big-stepper-number {
+  font-family: var(--display);
+  font-size: var(--fs-numeral);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--label);
+  background: none;
+  border: none;
+  padding: var(--sp-1) var(--sp-2);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+/* The one 20px/600 style that does NOT take the metric tracking: `kg` is a word sitting
+   beside a 56px number, and -0.01em on two letters only pulls them into the digits. */
+.big-stepper-unit {
+  font-size: var(--fs-title);
+  font-weight: 600;
+  color: var(--label-secondary);
+  margin-left: 4px;
+  letter-spacing: 0;
+}
+
+/* Tracking matches `.big-stepper-number` exactly: this input replaces that button in place
+   when you tap the number to type, and without it the digits re-space under your thumb. */
+.big-stepper-value input {
+  width: 100%;
+  font-family: var(--display);
+  font-size: var(--fs-numeral);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  text-align: center;
+  color: var(--label);
+  background: var(--bg-tertiary);
+  border: none;
+  border-radius: var(--radius);
+  font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.big-stepper-value input::-webkit-outer-spin-button,
+.big-stepper-value input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* ---- This-session strip ---- */
+/* Tapping a logged set un-ticks it, which is also how you get back to a mis-tapped set —
+   the logger derives the current set as the first one not done. */
+.session-strip {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin-top: var(--sp-4);
+}
+
+.session-chip {
+  font-family: inherit;
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  color: var(--label);
+  background: var(--bg-elevated);
+  border: 0.5px solid var(--separator);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-2) var(--sp-3);
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.session-chip.pending[data-current='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.session-chip.pending {
+  color: var(--label-secondary);
+  background: none;
+  display: flex;
+  align-items: center;
+}
+
+/* ---- Exercise complete ---- */
+.done-hero {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-5) 0;
+}
+
+.done-mark {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid var(--success);
+  color: var(--success);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.done-title {
+  text-wrap: balance;
+  font-family: var(--display);
+  font-size: var(--fs-headline);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.perf-list {
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.perf-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+}
+
+.perf-row + .perf-row {
+  border-top: 0.5px solid var(--separator);
+}
+
+.perf-set {
+  color: var(--label-secondary);
+  font-size: var(--fs-meta);
+}
+
+.perf-value {
+  font-size: var(--fs-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.progression-card,
+.why-card {
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-5);
+}
+
+.progression-reason {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--label);
+}
+
+.why-card .steps {
+  margin-top: var(--sp-3);
+  color: var(--label-secondary);
+  font-size: var(--fs-meta);
+}
+
+/* ---- Progression list on the summary ---- */
+.prog-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  min-height: 44px;
+}
+
+.prog-row + .prog-row {
+  border-top: 0.5px solid var(--separator);
+}
+
+/* Drawn glyphs, not ↑ ↓ –. The typographic arrows sat beside icons solved for a constant
+   1.75px rendered stroke and matched none of them, at a weight the font picked rather than
+   one we set. Still a fact and not a badge: colour and direction, nothing that fills. */
+.prog-mark {
+  flex: 0 0 24px;
+  display: flex;
+  justify-content: center;
+  color: var(--label-secondary);
+}
+
+.prog-mark.advance {
+  color: var(--success);
+}
+
+.prog-mark.deload {
+  color: var(--danger);
+}
+
+.prog-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prog-target {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  color: var(--label-secondary);
+  font-size: var(--fs-meta);
+  flex-shrink: 0;
+}
+
+/* The change from what you just lifted. It is a recorded fact, so it is the same weight of
+   type as everything beside it — no badge, no fill, no colour on "Held". Up and down get a
+   tint only because direction is the one thing worth reading at a glance. */
+.prog-change {
+  font-size: var(--fs-micro);
+  color: var(--label-secondary);
+  min-width: 52px;
+  text-align: right;
+}
+
+.prog-change.up {
+  color: var(--success);
+}
+
+.prog-change.down {
+  color: var(--label-secondary);
+}
+
+/* A screen's secondary "add another one of these" action. It was a bare .btn, which put
+   its label at x=28 — the section header above it sits at 16 and the row titles inside the
+   group at 32, so it lined up with neither and read as a stray indent rather than as the
+   action it is. Full width on the rail, and a dashed edge because it is the one control in
+   the app that stands for something that is not there yet. */
+.btn-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 44px;
+  padding: var(--sp-3);
+  font: inherit;
+  font-size: var(--fs-meta);
+  color: var(--accent);
+  background: none;
+  border: 1px dashed var(--separator);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+}
+
+.btn-add:active {
+  background-color: var(--bg-elevated);
+}
+
+/* ---- Quiet + bezel buttons ---- */
+/* .btn is accent-coloured; these are for actions that must not compete with the primary. */
+.btn-quiet {
+  display: block;
+  width: 100%;
+  color: var(--label-secondary);
+  margin-top: var(--sp-5);
+}
+
+.btn-bezel {
+  background: var(--bg-elevated);
+  border-radius: var(--radius);
+  color: var(--label);
+}
+
+.btn-bezel:disabled {
+  opacity: 0.4;
+}
+
+/* ---- Browser preview actions ---- */
+.browser-actions {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+
+.browser-actions .btn,
+.browser-actions .btn-primary {
+  flex: 1;
+  margin: 0;
+}
+
+/* ---- Session overview rows ---- */
+/* One row splits into a jump target (the whole label) and a trailing options button, so a
+   row is a div with two sibling buttons — nesting a button inside a button is invalid. */
+.row-jump {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  padding: 0;
+  margin: 0;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.row-more {
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--label-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+/* ---- Weight hint ---- */
+/* Display-only: tells the user whether to log one side or total (plates only). It never
+   changes the numbers — weightKg stays a single logged value everywhere. */
+.weight-hint {
+  color: var(--label-secondary);
+  font-size: var(--fs-micro);
+  margin: 4px 0 0;
+}
+
+/* ---- Today: the coach card ---- */
+/* One decision, above everything else on the screen. Raised on --bg-elevated, which is the
+   card ground the accent tokens were measured against (--accent 4.73:1 on it). */
+/* The one decision the screen exists to offer. It and the week card were the same fill, the
+   same radius and the same padding, so nothing said which to read first — and the week card
+   is a summary you can open, not a thing to do. The hairline is the whole difference: the
+   coach card keeps the elevated fill and gains an edge, the week card gives the fill up. */
+.coach-card {
+  border: 0.5px solid var(--separator);
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-4);
+}
+
+.coach-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.coach-meta {
+  font-size: var(--fs-micro);
+  color: var(--label-secondary);
+}
+
+.coach-kind {
+  margin-bottom: var(--sp-1);
+}
+
+.coach-title {
+  text-wrap: balance;
+  font-family: var(--display);
+  font-size: var(--fs-headline);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: var(--label);
+}
+
+.coach-detail {
+  font-size: var(--fs-meta);
+  color: var(--label-secondary);
+  margin-top: var(--sp-1);
+}
+
+/* Why this, not something else. Every target in this app comes with a reason line; the
+   card is the same promise at the level of the whole day. */
+.coach-reason {
+  font-size: var(--fs-micro);
+  color: var(--label-secondary);
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 0.5px solid var(--separator);
+}
+
+/* The target sits between the name of the session and the button: the last thing read
+   before the decision. Ruled off rather than boxed — another card inside this one would
+   make the screen a stack of widgets. */
+.coach-target {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  border-top: 0.5px solid var(--separator);
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-3);
+}
+
+.coach-target-name {
+  font-size: var(--fs-meta);
+  color: var(--label-secondary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.coach-target-value {
+  font-size: var(--fs-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  flex-shrink: 0;
+}
+
+.coach-card .btn-primary {
+  margin-top: var(--sp-4);
+}
+
+/* ---- Today: the week strip ---- */
+/* A button, so it carries the same reset `button.row` does — and for the same reason, since
+   an inline one would out-specify every rule here. */
+/* A button, so it carries the same reset `button.row` does — and for the same reason, since
+   an inline one would out-specify every rule here.
+
+   It keeps its own fill. Stripping it to page level was tried on 2026-09-05 to make the
+   coach card read as the hero and was worse on the device: the strip, the counts and the
+   meta line have nothing holding them together without it, and a summary you can press
+   should look like an object you can press. The hierarchy is the coach card's hairline
+   instead — see the note there. */
+.week-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  border: none;
+  padding: var(--sp-4);
+  cursor: pointer;
+}
+
+/* A surface presses by changing fill, never by shrinking or fading — the same rule and the
+   same colour as button.row, for the reason recorded there: a full-width object that scales
+   pulls away from everything it is aligned to. It used to do both at once. */
+.week-card:active {
+  background-color: var(--bg-tertiary);
+}
+
+.week-strip {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-1);
+}
+
+.week-day {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.week-day-letter {
+  font-size: var(--fs-micro);
+  color: var(--label-secondary);
+}
+
+.week-day[data-today='true'] .week-day-letter {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Three facts in one 10px mark, and each is carried by its own property so none of them
+   depends on another:
+
+     SHAPE   which kind — square for a lift, circle for cardio
+     FILL    whether it happened — solid done, hollow still to come
+     COLOUR  which kind again, in the category tints
+
+   So the states read apart at a glance, and in greyscale:
+
+     rest              6px grey dot, visibly less than the others
+     planned lift      hollow violet square
+     planned cardio    hollow cyan circle
+     done lift         solid violet square
+     done cardio       solid cyan circle
+
+   Colour and shape deliberately say the SAME thing. The strip used to paint both kinds
+   --accent and leave the square to carry it alone, which meant Settings' planner and this
+   strip encoded one distinction two different ways. The tints are 4.73:1 and 4.75:1 on a
+   card against the 3:1 a 1.5px ring needs as a graphical object.
+
+   Past and future planned days are drawn IDENTICALLY — see WeekStrip. Never a cross and
+   never a warning colour: an outstanding day is a fact, not a failure to resolve. */
+.week-day-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.week-day-dot[data-state='rest'] {
+  width: 6px;
+  height: 6px;
+  background: var(--separator);
+}
+
+/* Square corners, not --radius-xs: at 10px the rounded one was barely a square beside the
+   circle, so the lift/cardio distinction read as a rendering fault rather than a code. */
+.week-day-dot[data-kind='lift'] {
+  border-radius: 0;
+}
+
+.week-day-dot[data-state='planned'][data-kind='lift'] {
+  border: 1.5px solid var(--cat-lift);
+}
+
+.week-day-dot[data-state='planned'][data-kind='cardio'] {
+  border: 1.5px solid var(--cat-cardio);
+}
+
+.week-day-dot[data-state='done'][data-kind='lift'] {
+  background: var(--cat-lift);
+}
+
+.week-day-dot[data-state='done'][data-kind='cardio'] {
+  background: var(--cat-cardio);
+}
+
+/* ---- The coach card's kind ---- */
+/* The glyph carries the colour and the eyebrow beside it does not — a label here is passive
+   by definition and is never accent-tinted, which is the rule the eyebrow block is written
+   under. Same four glyphs and same two tints as the week planner in Settings, so a
+   suggestion and the shape it came from are visibly one vocabulary. */
+.coach-lead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.coach-glyph {
+  display: flex;
+  color: var(--label-secondary);
+}
+
+.coach-glyph[data-cat='lift'] {
+  color: var(--cat-lift);
+}
+
+.coach-glyph[data-cat='cardio'] {
+  color: var(--cat-cardio);
+}
+
+/* Both counts sit against the card's own edges. Splitting them into two half-width cells
+   was tried on 2026-09-05 and reverted: it reads as a stray indent once the card is back,
+   because the second cell's left edge lines up with nothing. */
+.week-counts {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--fs-meta);
+  color: var(--label);
+  margin-top: var(--sp-4);
+}
+
+.week-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-4);
+  font-size: var(--fs-micro);
+  color: var(--label-secondary);
+  margin-top: var(--sp-2);
+}
+
+/* The slot number rides with the thumbnail rather than taking a column of its own: a plan is
+   an ordered sequence, so the position is real information, but it is not worth 24px of
+   every row's width. */
+.plan-order {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+}
+
+.plan-order-n {
+  position: absolute;
+  top: -4px;
+  left: -6px;
+  z-index: 1;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+/* The three chip rows cost 132px above the first result on a 793px screen, and most
+   searches never touch them. They are closed by default behind this bar, which carries what
+   they currently say — a filter you cannot see is a filter you will forget you set, so the
+   summary is the price of being allowed to close them. */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+
+.filter-disclosure {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 44px;
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  color: var(--label);
+  cursor: pointer;
+}
+
+.filter-disclosure-label {
+  font-size: var(--fs-meta);
+  flex-shrink: 0;
+}
+
+/* Takes the leftover width and truncates, because three filter names can outrun a phone and
+   the label plus the chevron must keep their place — the same reason `Selector` draws its
+   own value against a fixed chevron rather than letting a native select size the box. */
+.filter-disclosure-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  font-size: var(--fs-meta);
+  color: var(--label-secondary);
+}
+
+/* The app's one disclosure convention, in one place: closed points DOWN, open points UP.
+   A row opts in with `open` on `Row`, which is what tells it apart from the navigation
+   chevron sitting in the same slot on every other row. */
+.filter-chevron,
+.row-chevron[data-open] {
+  display: inline-flex;
+  color: var(--label-secondary);
+  transform: rotate(90deg);
+}
+
+.filter-chevron.open,
+.row-chevron[data-open='true'] {
+  transform: rotate(-90deg);
+}
+
+.filter-clear {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: var(--fs-meta);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.filter-group {
+  margin-bottom: var(--sp-1);
+}
+
+/* Takes the section/caption treatment above rather than a third one of its own, and pays
+   none of its leading: a rail label repeated three times is not a section break. */
+/* On the rail, not a --sp-1 inside it: this label heads a chip row whose first chip starts
+   at the gutter, so 4px of padding put the two on different left edges. */
+.filter-label {
+  padding: 0 0 var(--sp-1);
+}
+
+/* The row scrolls sideways because ten body parts do not fit a phone and wrapping them
+   would cost three more rows of 44pt each — the opposite trade from `.chip-row`, which
+   wraps because it sits in a sheet with few options. The mask fades the last chip out
+   instead of guillotining it mid-word, which is the only thing on screen saying there is
+   more to the right. It bites only on pixels inside the final 24px, so a row short enough
+   to fit is untouched by it. */
+.filter-chips {
+  display: flex;
+  gap: var(--sp-2);
+  overflow-x: auto;
+  /* `overflow-x: auto` computes overflow-y to auto as well — CSS does not allow one axis
+     to stay visible — so the 5px the chip's target reaches above and below would be
+     clipped here of all places. The padding reserves it. The row is therefore still 44px
+     tall and the shrink buys weight, not height. */
+  padding: 5px 0;
+  scrollbar-width: none;
+  /* #000 here is a mask channel, not a colour — opaque means "keep these pixels". */
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent);
+}
+
+.filter-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.browser-count {
+  font-size: var(--fs-micro);
+  color: var(--label-secondary);
+  text-align: center;
+  margin: var(--sp-4) 0 0;
+}
+
+.import-message {
+  font-size: var(--fs-micro);
+  color: var(--success);
+  padding: 0 var(--sp-1);
+}
+
+.import-message.error {
+  color: var(--danger);
+}
+
+.visually-gone {
+  display: none;
+}
+
+.pick-tick {
+  display: flex;
+  color: var(--accent);
+}
+
+.picker-log {
+  margin-top: var(--sp-4);
+}
+
+/* An expandable region that animates from nothing to its own height without anyone
+   measuring it: a grid row of 0fr grows to 1fr, and the body clips itself on the way. The
+   contents stay mounted, so the transition is a plain property transition like every other
+   piece of motion in the app and the reduced-motion block turns it off with the rest. */
+.disclosure {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.18s ease-out;
+}
+
+.disclosure[data-open] {
+  grid-template-rows: 1fr;
+}
+
+.disclosure-body {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.banner-text {
+  flex: 1;
+}
+
+.detail-exercise {
+  margin-bottom: var(--sp-4);
+}
+
+.action-sheet-btn.cancel {
+  margin-top: var(--sp-2);
+  border-radius: var(--radius);
+}
+
+/* ---- Week detail ---- */
+.mix-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  min-height: 44px;
+}
+
+.mix-row + .mix-row {
+  border-top: 0.5px solid var(--separator);
+}
+
+.mix-label {
+  flex: 0 0 88px;
+  font-size: var(--fs-meta);
+}
+
+.mix-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+
+.mix-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+}
+
+.mix-count {
+  flex: 0 0 20px;
+  text-align: right;
+  font-size: var(--fs-meta);
+  font-weight: 600;
+}
+
+.wk-day {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  min-height: 44px;
+}
+
+.wk-day + .wk-day {
+  border-top: 0.5px solid var(--separator);
+}
+
+.wk-day-name {
+  flex: 0 0 44px;
+}
+
+.wk-day[data-today='true'] .wk-day-name {
+  color: var(--accent);
+}
+
+/* One line per thing logged: a day with a lift and a run is two lines, not a joined string
+   that has to be read apart. */
+.wk-day-detail {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--fs-meta);
+}
+
+.wk-day-empty {
+  color: var(--label-secondary);
+}
+
+.consistency-line {
+  font-size: var(--fs-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.wk-weeks {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+
+/* Six counts, evenly weighted. Deliberately not a chart and deliberately not coloured by
+   whether the number is good — it is a row of facts, and the most recent week has no more
+   claim on your attention than the others. */
+.wk-week {
+  flex: 1;
+  text-align: center;
+  padding: var(--sp-2) 0;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  font-size: var(--fs-meta);
+  font-weight: 600;
+}
+
+.consistency-note,
+.week-facts {
+  font-size: var(--fs-micro);
+  color: var(--label-secondary);
+  margin: var(--sp-2) 0 0;
+}
+
+/* ---- Settings: stepper and note ---- */
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.stepper button {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.stepper button:disabled {
+  color: var(--label-secondary);
+  opacity: 0.4;
+}
+
+.stepper-value {
+  min-width: 20px;
+  text-align: center;
+  font-size: var(--fs-body);
+  color: var(--label);
+}
+
+/* ---- A row's leading glyph ---- */
+/* Settings and Plan's edit sheet are the screens that are all words and no numbers, which is
+   what made them the flattest things in the app — switches and pickers you re-read top to
+   bottom every visit because nothing about a row is memorable. The glyph is what you
+   actually remember the second time: where the speaker was, not which of three rows it was.
+
+   28px, because the row is 44 with 11 of padding and anything larger grows every row in the
+   list. Same fill and radius as a thumbnail, so it reads as the same kind of object. The
+   glyph is --accent at 3.40:1 on --bg-tertiary and --danger at 3.73:1 — both over the 3:1
+   graphical bar, neither claiming to be text. `data-cat` swaps it onto a category tint and
+   its ground, which is what ties a plan session header to the week planner. */
+.row-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.row-icon[data-danger='true'] {
+  color: var(--danger);
+}
+
+.row-icon[data-cat='lift'] {
+  background: var(--cat-lift-dim);
+  color: var(--cat-lift);
+}
+
+.row-icon[data-cat='cardio'] {
+  background: var(--cat-cardio-dim);
+  color: var(--cat-cardio);
+}
+
+/* ---- Plan's session headers ---- */
+/* Three rotation days stacked as three identical grey eyebrows, so you could not find a
+   section boundary scrolling past it. The glyph is the marker. All three take the SAME
+   lift tint deliberately: a colour per day would make the tint mean "which day" rather than
+   "strength", and there are only two category colours for exactly that reason. The eyebrow
+   itself is untouched — it keeps the one rule and its own leading. */
+.plan-session-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* ---- The week shape ---- */
+/* Seven full-width rows for a thing you set twice a year, and they said nothing about the
+   week as a SHAPE — which is the one thing this setting is: an input the coach reads, never
+   a set of appointments. Seven columns say it in a glance and cost ~95px where the rows
+   cost 308.
+
+   The column width is the constraint and it was measured, not guessed. Settings is a sheet,
+   which is full-bleed with the gutter as its own padding, so on a 393px iPhone 16:
+   393 − 32 (the sheet's gutter) − 24 (this block's padding) − 24 (six 4px gaps) = 313, over
+   seven columns is 44.7px. That clears the 44pt minimum by six tenths of a point, so the
+   paint IS the target here and there is no ::after expansion — a chip in a row of seven
+   cannot grow sideways without eating its neighbour's tap. Narrowing the gaps or the
+   padding any further takes it under 44.
+
+   `minmax(0, 1fr)` and not a bare `1fr`: a bare one floors at min-content, and the kind
+   label under each tile is `nowrap`, so on a narrower phone the seven columns would push
+   past the card and scroll sideways instead of shrinking. */
+.planner {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--sp-1);
+  padding: var(--sp-3);
+}
+
+.planner-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* A small object you press scales; a full-width surface never does. This is the small
+   case, so it takes the same 0.96 the chips and stepper buttons use. */
+.planner-day:active {
+  transform: scale(0.96);
+}
+
+.planner-tile {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* A long run is the cardio tint and a different GLYPH, because it is the same kind of day
+   done further — and because at 20px a second blue would read as a rendering fault. */
+.planner-day[data-cat='lift'] .planner-tile {
+  background: var(--cat-lift-dim);
+  color: var(--cat-lift);
+}
+
+.planner-day[data-cat='cardio'] .planner-tile {
+  background: var(--cat-cardio-dim);
+  color: var(--cat-cardio);
+}
+
+/* Rest is drawn calm rather than empty: the neutral surface every inner field in the app
+   uses, and the secondary label colour at 4.97:1 on it. A rest day is a decision, so it
+   gets a tile and a glyph like the other three — it just does not get a colour. */
+.planner-day[data-cat='rest'] .planner-tile {
+  background: var(--bg-tertiary);
+  color: var(--label-secondary);
+}
+
+/* The kind, under the tile. Not the eyebrow rule above — an eyebrow is a passive label and
+   this is the value the button carries, so it is sentence case and it takes the tier's
+   colour. It is also what keeps the distinction off hue alone for anyone reading the
+   planner in greyscale, together with the four glyphs. */
+.planner-kind {
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--label);
+  white-space: nowrap;
+}
+
+.planner-day[data-cat='rest'] .planner-kind {
+  color: var(--label-secondary);
+  font-weight: 400;
+}
+
+.settings-note {
+  font-size: var(--fs-micro);
+  color: var(--label-secondary);
+  padding: 0;
+  margin: calc(var(--sp-2) * -1) 0 var(--sp-4);
+}

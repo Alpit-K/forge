@@ -1,0 +1,67 @@
+# Notices
+
+## Exercise dataset
+
+The exercise dataset bundled in `src/data/exercises.json` is derived from
+[`hasaneyldrm/exercises-dataset`](https://github.com/hasaneyldrm/exercises-dataset).
+
+```
+MIT License
+
+Copyright (c) 2026 Hasan Emir Yıldırım
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation and data files (the "Software"),
+to deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## Exercise media
+
+The MIT licence above covers the dataset structure and instruction text only. It
+does not cover the exercise media served from `images/` and `videos/`, which is:
+
+```
+© Gym visual — https://gymvisual.com/
+```
+
+The upstream repository includes that media with Gym visual's written
+permission, and states that cloning it grants no licence to the media — the
+permission does not transfer. Forge therefore has no licence to it. This app
+bundles none of it: `src/data/exercises.json` carries only file names, and the
+running app loads the images over the network from a CDN copy of the upstream
+repository. Its use is governed by Gym visual's terms and conditions
+(https://gymvisual.com/content/3-terms-and-conditions-of-use), and the
+attribution above is retained wherever it is shown. Anyone deploying Forge is
+responsible for their own use of the media; building with
+`VITE_EXERCISE_MEDIA=off` produces an instance that never requests it.
+
+---
+
+`openGym` (AGPL-3.0) was read only as a design reference for the wake-lock and
+progression designs. No code was copied from it or from any AGPL source.
+
+## Display typeface
+
+`src/assets/inter-latin-var.woff2` is the latin subset of Inter, bundled rather than served
+from a CDN because the app must render with no signal. The full licence text is alongside it
+in `src/assets/Inter-LICENSE.txt`.
+
+```
+Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+```

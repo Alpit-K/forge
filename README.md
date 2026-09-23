@@ -7,6 +7,16 @@ Forge guides one lifting session at a time: it prescribes the next weight and re
 for each exercise, explains why that number was chosen, times your rest, and records what
 you actually lifted. Everything is stored on the phone.
 
+<p>
+  <img src=".github/screenshots/today.png" width="200" alt="Today: the next session and its targets">
+  <img src=".github/screenshots/workout.png" width="200" alt="Logging a set during a workout">
+  <img src=".github/screenshots/plan.png" width="200" alt="Plan: the editable program">
+  <img src=".github/screenshots/history.png" width="200" alt="History: completed sessions">
+</p>
+
+*Demo data, built with `VITE_EXERCISE_MEDIA=off` — a default build shows exercise images in
+place of the lettered tiles.*
+
 ## Design constraints
 
 These shape every decision in the codebase and are not negotiable.

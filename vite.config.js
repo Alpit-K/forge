@@ -26,7 +26,7 @@ export default defineConfig({
       manifest: {
         name: 'Forge',
         short_name: 'Forge',
-        description: 'Offline-first weightlifting log',
+        description: 'Offline-first gym workout tracker and weightlifting log',
         // The app is dark only, so the single value a manifest allows is finally the right
         // one — the launch splash now matches the ground the app paints.
         theme_color: '#0B0B0C',

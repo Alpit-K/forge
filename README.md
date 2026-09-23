@@ -1,11 +1,13 @@
 # Forge
 
-A self-hosted, offline-first weightlifting log. It runs as a progressive web app installed
-to an iPhone home screen — no backend, no accounts, no App Store, no subscription.
+A self-hosted, offline-first gym workout tracker and weightlifting log. It runs as a
+progressive web app (PWA) installed to an iPhone home screen — no backend, no accounts,
+no App Store, no subscription.
 
-Forge guides one lifting session at a time: it prescribes the next weight and rep target
-for each exercise, explains why that number was chosen, times your rest, and records what
-you actually lifted. Everything is stored on the phone.
+Forge guides one strength-training session at a time using progressive overload: it
+prescribes the next weight and rep target for each exercise, explains why that number was
+chosen, times your rest, and records what you actually lifted. Everything is stored on the
+phone.
 
 <p>
   <img src=".github/screenshots/today.png" width="200" alt="Today: the next session and its targets">

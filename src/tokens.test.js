@@ -144,8 +144,8 @@ describe('graphical objects meet 3:1', () => {
     // Settings' row glyphs, both tints, on the neutral tile they sit in.
     ['settings glyph on tertiary', accent, tertiary],
     ['settings danger glyph on tertiary', danger, tertiary],
-    // Read out of the rule rather than assumed, so putting #fff back here fails.
-    ['logged-set tick glyph on its fill', tickGlyph, success],
+    // Read out of the rule rather than assumed. The tick has no fill, so the card is its ground.
+    ['logged-set tick glyph on card', tickGlyph, card],
     ['ring fill on ground', accentFill, bg],
     ['planned-day ring on card', accent, card],
   ]

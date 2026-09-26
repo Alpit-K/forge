@@ -61,6 +61,8 @@ function paths(name) {
       return <path d="M9 6l6 6-6 6" />
     case 'check':
       return <path d="M4 12l6 6L20 6" />
+    case 'search':
+      return <path d="M10.5 17.5a7 7 0 1 0 0-14 7 7 0 0 0 0 14ZM15.5 15.5 20.5 20.5" />
     case 'plus':
       return <path d="M12 5v14M5 12h14" />
     case 'minus':

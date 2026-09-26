@@ -4,8 +4,8 @@ export function Section({ children }) {
   return <div className="section-header">{children}</div>
 }
 
-export function Group({ children }) {
-  return <div className="list">{children}</div>
+export function Group({ children, className }) {
+  return <div className={className ? `list ${className}` : 'list'}>{children}</div>
 }
 
 // A row's leading glyph. Not decoration — it is what makes a row findable on the second

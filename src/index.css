@@ -121,12 +121,14 @@
   --fs-display: 34px;
   --fs-numeral: 56px;
 
-  /* Radius scale. --radius is the card and the grouped list; anything smaller sits inside
-     one, anything larger is a control you press. */
+  /* Radius scale, nesting inward: --radius-xl is the coach card alone, the one lead surface;
+     --radius-lg every other card and grouped list; --radius a button or a control on the page
+     ground; --radius-sm a thumbnail or a field inside a card. */
   --radius-xs: 3px;
   --radius-sm: 8px;
   --radius: 10px;
   --radius-lg: 14px;
+  --radius-xl: 20px;
   --radius-pill: 999px;
 
   /* Depth on a near-black ground comes from the top edge, not from a shadow: black cast onto
@@ -246,7 +248,6 @@ body {
 .session-chip,
 .set-count,
 .col-set,
-.col-last,
 .perf-set,
 .perf-value,
 .prog-target,
@@ -261,7 +262,6 @@ body {
 .ex-stat-note,
 .ex-session-date,
 .ex-session-sets,
-.ex-trend,
 .block-marker-count,
 .block-marker-dates,
 .block-change-value,
@@ -719,12 +719,12 @@ button.row:active {
 .caption,
 .filter-label,
 .coach-kind,
-.timeline-lead,
 .ex-stat-label,
 .logger-progress,
 .set-table-head,
 .rest-caption,
 .rest-next-set,
+.timeline-day,
 .summary-stat .label,
 .big-stepper-label,
 .wk-day-name,
@@ -824,8 +824,39 @@ button.row:active {
 }
 
 /* ---- History timeline ---- */
-.timeline-lead {
-  margin: var(--sp-2) 0 0;
+.block-lead {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-3);
+}
+
+.block-lead-figure {
+  font-family: var(--display);
+  font-size: var(--fs-headline);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: var(--label);
+}
+
+.block-lead-of {
+  color: var(--label-secondary);
+}
+
+.block-lead-caption {
+  font-size: var(--fs-meta);
+  color: var(--label-secondary);
+}
+
+/* A day inside the timeline card. Days are ruled off from each other edge to edge; the rows
+   within a day keep the inset separator, so the two boundaries read differently. */
+.timeline-day {
+  padding: var(--sp-3) var(--gutter) 0;
+}
+
+.timeline-day:not(:first-child) {
+  border-top: 0.5px solid var(--separator);
 }
 
 /* A closed block, marking where it ended in the stream. Not a card: it is a rule across the
@@ -835,6 +866,30 @@ button.row:active {
   border-top: 0.5px solid var(--separator);
   padding: var(--sp-5) 0 var(--sp-4);
   margin-bottom: var(--sp-4);
+}
+
+/* The heading and dates are the disclosure's trigger, which is also what gets them to 44 pt.
+   A bare text control on the page ground, so it fades on press like `.btn`. */
+.block-marker-toggle {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.block-marker-toggle:active {
+  opacity: 0.4;
+}
+
+.block-marker-count .filter-chevron {
+  margin-left: var(--sp-2);
+  vertical-align: middle;
 }
 
 .block-marker-head {
@@ -980,12 +1035,6 @@ button.row:active {
   padding: var(--sp-2) 0 var(--sp-1);
   min-height: 44px;
   cursor: pointer;
-}
-
-.ex-trend {
-  color: var(--label-secondary);
-  font-size: var(--fs-micro);
-  margin: var(--sp-1) 0 0;
 }
 
 .ex-about {
@@ -1140,19 +1189,18 @@ button.row:active {
   margin: var(--sp-1) 0 0;
 }
 
-/* One line per set. The two stacked steppers this replaces cost ~90px per set and pushed
-   the workout screen past a single phone height; the grid holds three sets in ~140px.
-   Columns: number, last time, kg, reps, tick. */
+/* One line per set, under the exercise's row in its card — History's editor, the only
+   place the table is left. Columns: number, kg, reps, tick. */
 .set-table {
-  margin-bottom: var(--sp-3);
+  padding: 0 var(--gutter) var(--sp-2);
 }
 
 .set-table-head,
 .set-table-row {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) 70px 62px 44px;
+  grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr) 44px;
   align-items: center;
-  gap: var(--sp-2);
+  gap: var(--sp-3);
 }
 
 .set-table-head {
@@ -1179,15 +1227,10 @@ button.row:active {
   font-weight: 600;
 }
 
-.set-table-row .col-last {
-  color: var(--label-secondary);
-  font-size: var(--fs-micro);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Committed on blur, never per keystroke — see NumCell. */
+/* Committed on blur, never per keystroke — see NumCell. A finished workout is a record,
+   corrected now and then, so the value sits bare and the box arrives with focus: six filled
+   boxes per exercise read as a form to fill in, and a hairline box doubled up with the row
+   separators. Both were tried against this in screenshots on 2026-09-26. */
 .num-cell {
   width: 100%;
   min-height: 46px;
@@ -1197,12 +1240,16 @@ button.row:active {
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--label);
-  background: var(--bg-tertiary);
+  background: none;
   border: none;
   border-radius: var(--radius-sm);
   text-align: center;
   -moz-appearance: textfield;
   appearance: textfield;
+}
+
+.num-cell:focus {
+  background: var(--bg-tertiary);
 }
 
 .num-cell::-webkit-outer-spin-button,
@@ -1233,14 +1280,13 @@ button.row:active {
   padding: 0;
 }
 
-/* The glyph is the ground colour, not white. White on --success measures 2.02:1 — under
-   the 3:1 a meaningful graphical object needs, and this one means "this set is logged",
-   read mid-set in whatever light the gym has. The fill going green is the other half of
-   the signal, but it cannot be the only half. --bg on the same fill is 9.73:1. */
+/* A logged set is the normal state of a finished workout, so it is a green tick and no
+   fill: a solid green disc on every row was the loudest thing in the sheet and said the
+   least. The empty ring still marks the set that was not done. Green on the card is 4.5:1
+   or better, so the glyph carries the state on its own. */
 .tick.done {
-  background: var(--success);
-  border-color: var(--success);
-  color: var(--bg);
+  border-color: transparent;
+  color: var(--success);
   animation: tick-pop 0.26s ease-out;
 }
 
@@ -1619,6 +1665,26 @@ button.row:active {
   margin-bottom: var(--sp-3);
 }
 
+/* The glyph sits over the field's own left padding, so the field keeps its box and its
+   focus outline. */
+.search-field {
+  position: relative;
+  display: block;
+}
+
+.search-field svg {
+  position: absolute;
+  left: var(--sp-3);
+  top: 22px;
+  transform: translateY(-50%);
+  color: var(--label-secondary);
+  pointer-events: none;
+}
+
+.search-field .search {
+  padding-left: 38px;
+}
+
 .search:focus {
   outline: 1.5px solid var(--accent);
 }
@@ -1758,6 +1824,7 @@ button.row,
 .toggle,
 .toggle .knob,
 .btn,
+.block-marker-toggle,
 .btn-primary,
 .week-card,
 .week-day-dot,
@@ -1778,6 +1845,7 @@ button.row:active,
 .btn-add:active,
 .toggle:active,
 .btn:active,
+.block-marker-toggle:active,
 .btn-primary:active,
 .week-card:active,
 .session-chip:active,
@@ -2244,9 +2312,12 @@ button.row:active,
 /* The one decision the screen exists to offer. It and the week card were the same fill, the
    same radius and the same padding, so nothing said which to read first — and the week card
    is a summary you can open, not a thing to do. The hairline is the whole difference: the
-   coach card keeps the elevated fill and gains an edge, the week card gives the fill up. */
+   coach card keeps the elevated fill and gains an edge, the week card gives the fill up.
+   It also takes --radius-xl where every other card is --radius-lg: the one surface that
+   leads the screen is the one drawn differently. */
 .coach-card {
   border: 0.5px solid var(--separator);
+  border-radius: var(--radius-xl);
   padding: var(--sp-4);
   margin-bottom: var(--sp-4);
 }
@@ -2668,8 +2739,12 @@ button.row:active,
   flex: 1;
 }
 
-.detail-exercise {
-  margin-bottom: var(--sp-4);
+/* What the sheet's title does not say: when, how long, and how much. */
+.detail-meta {
+  margin: calc(-1 * var(--sp-1)) 0 var(--sp-4);
+  text-align: center;
+  font-size: var(--fs-micro);
+  color: var(--label-secondary);
 }
 
 .action-sheet-btn.cancel {
@@ -2863,6 +2938,28 @@ button.row:active,
   display: flex;
   align-items: center;
   gap: var(--sp-2);
+}
+
+/* The sequence spine: one line from the first thumbnail's centre to the last's, drawn
+   behind the rows so each thumbnail sits on it like a bead. 35px is 11px of row padding
+   plus half a 48px thumbnail, and gutter + 23px centres the 2px line on the thumbnail. */
+.plan-sequence {
+  position: relative;
+}
+
+.plan-sequence::before {
+  content: '';
+  position: absolute;
+  top: 35px;
+  bottom: 35px;
+  left: calc(var(--gutter) + 23px);
+  width: 2px;
+  background: var(--bg-tertiary);
+}
+
+/* The separators start past the thumbnail here, so they meet the spine rather than cross it. */
+.plan-sequence .row + .row::before {
+  left: calc(var(--gutter) + 60px);
 }
 
 /* ---- The week shape ---- */

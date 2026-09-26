@@ -1,5 +1,5 @@
-// Rest progress as a ring. Driven by a fraction the caller derives from restStartedAt, never
-// by a counter of its own — see RestTimer for why.
+// Progress as a ring — the rest timer's, and the block count on History. Driven by a fraction
+// the caller derives, never by a counter of its own: see RestTimer for why that matters there.
 export default function ProgressRing({ fraction, size = 232, stroke = 12, children }) {
   const clamped = Math.max(0, Math.min(1, fraction))
 

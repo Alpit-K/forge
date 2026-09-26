@@ -140,15 +140,6 @@ export default function Plan() {
     <>
       <NavBar title="Plan" />
       <div className="screen-body">
-        <Group>
-          <Row
-            title="Sessions per block"
-            subtitle="A block ends here and the label moves on; nothing else changes"
-            thumb={<RowIcon name="plan" />}
-            value={<SessionCountControl />}
-          />
-        </Group>
-
         {plan.rotation.map((session, si) => (
           <div key={si}>
             {/* All three days take the same lift tint on purpose — a colour per day would
@@ -159,10 +150,11 @@ export default function Plan() {
               <RowIcon name="dumbbell" cat="lift" />
               <Section>
                 {session.name} · {session.exercises.length}{' '}
-                {session.exercises.length === 1 ? 'exercise' : 'exercises'}
+                {session.exercises.length === 1 ? 'exercise' : 'exercises'} ·{' '}
+                {session.exercises.reduce((n, e) => n + e.sets, 0)} sets
               </Section>
             </div>
-            <Group>
+            <Group className="plan-sequence">
               {session.exercises.map((e, ei) => {
                 const effectiveId = swaps[e.exerciseId] || e.exerciseId
                 const ex = getExercise(effectiveId, customEx)
@@ -189,6 +181,18 @@ export default function Plan() {
             </button>
           </div>
         ))}
+
+        {/* Last, not first: it is set a couple of times a year, and the programme is what
+            this screen is for. */}
+        <Section>Block</Section>
+        <Group>
+          <Row
+            title="Sessions per block"
+            subtitle="A block ends here and the label moves on; nothing else changes"
+            thumb={<RowIcon name="plan" />}
+            value={<SessionCountControl />}
+          />
+        </Group>
       </div>
 
       {editing && (

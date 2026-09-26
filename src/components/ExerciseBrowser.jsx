@@ -140,13 +140,16 @@ export default function ExerciseBrowser({ onSelect, selectLabel, suggestFor, exc
 
   return (
     <div>
-      <input
-        type="search"
-        className="search"
-        placeholder="Search exercises"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
+      <label className="search-field">
+        <Icon name="search" size={17} />
+        <input
+          type="search"
+          className="search"
+          placeholder="Search exercises"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </label>
       <div className="filter-bar">
         <button
           type="button"
@@ -205,7 +208,12 @@ export default function ExerciseBrowser({ onSelect, selectLabel, suggestFor, exc
       ) : (
         <div className="list">
           {shown.map((e) => (
-            <ExerciseRow key={e.id} exercise={e} subtitle={e.equipment} onClick={() => choose(e)} />
+            <ExerciseRow
+              key={e.id}
+              exercise={e}
+              subtitle={[e.target, e.equipment].filter(Boolean).join(' · ')}
+              onClick={() => choose(e)}
+            />
           ))}
         </div>
       )}

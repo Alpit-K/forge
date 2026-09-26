@@ -3,6 +3,7 @@ import { useStore } from '../store.js'
 import {
   blockWeightChanges,
   exerciseHistory,
+  heaviestDone,
   totalVolume,
   setsCompleted,
   durationSeconds,
@@ -13,7 +14,6 @@ import { getExercise, exerciseName } from '../lib/exercises.js'
 import {
   fmtDate,
   fmtDateTime,
-  fmtDuration,
   fmtDayHeading,
   fmtActivityCount,
   fmtDistance,
@@ -22,11 +22,11 @@ import {
 } from '../lib/format.js'
 import { ACTIVITY_TYPES, activityName, intensityLabel, runTypeLabel, matchFormatLabel } from '../lib/activities.js'
 import NavBar from '../components/NavBar.jsx'
-import { Group, Section } from '../components/List.jsx'
+import { Group, Row, Section } from '../components/List.jsx'
 import { Thumb, ActivityThumb } from '../components/ExerciseImage.jsx'
 import NumCell from '../components/NumCell.jsx'
 import Sheet, { ActionSheet } from '../components/Sheet.jsx'
-import Sparkline from '../components/Sparkline.jsx'
+import ProgressRing from '../components/ProgressRing.jsx'
 import ExerciseDetail from '../components/ExerciseDetail.jsx'
 import RunDetail from '../components/RunDetail.jsx'
 import ActivitySheet from '../components/ActivitySheet.jsx'
@@ -84,27 +84,35 @@ function blockWorkouts(workouts) {
 }
 
 // One flat, ordered list of everything the timeline draws. Walking newest to oldest, the
-// moment an item belongs to an older block than the one before it, the newer block has
-// ended — so its summary lands exactly between its oldest session and the next block's
-// newest, which is where a retrospective belongs. The current block never gets one, because
-// the walk never leaves it.
-function timelineRows(days, includeBlocks = true) {
+// moment an item belongs to a finished block the walk was not already in, that block's
+// summary goes above its newest item — the point where it ended, which is where a
+// retrospective belongs. The summary is the block being entered, never the one being left:
+// labelling it with the one left put the current block's name above the previous block's
+// sessions. The current block never gets one, because it has not ended.
+function timelineRows(days, currentBlock, includeBlocks = true) {
   const rows = []
   let prevBlock = null
-  // Consecutive items share one card, so a day reads as a day rather than as a stack of
-  // separate floating widgets. A block marker interrupting a day closes the card and opens
-  // a new one, which is correct — the two sides of it belong to different blocks.
+  // A run is the items between two boundaries. A block marker interrupting a day ends the
+  // run, which is correct — the two sides of it belong to different blocks.
   let run = null
   for (const day of days) {
     run = null
-    rows.push({ type: 'day', key: `day-${day.key}`, date: day.date })
+    // The heading waits for the day's first item, so a block that ended on the day before
+    // puts its marker ABOVE this day's heading rather than between the heading and its
+    // items. A marker in the middle of a day repeats the heading below it.
+    let headed = false
     for (const item of day.items) {
       const block = item.data.blockIndex
-      if (includeBlocks && prevBlock != null && block !== prevBlock) {
+      if (includeBlocks && block !== prevBlock && block !== currentBlock) {
         run = null
-        rows.push({ type: 'block', key: `block-${prevBlock}`, blockIndex: prevBlock })
+        headed = false
+        rows.push({ type: 'block', key: `block-${block}`, blockIndex: block })
       }
       prevBlock = block
+      if (!headed) {
+        headed = true
+        rows.push({ type: 'day', key: `day-${day.key}-${block}`, date: day.date })
+      }
       if (!run) {
         run = { type: 'items', key: `items-${item.data.id}`, items: [] }
         rows.push(run)
@@ -135,19 +143,27 @@ function BackupBanner({ onExport, onDismiss }) {
 
 // A closed block, marking the point in the timeline where it ended. Not a list container
 // any more — a dated entry in the journal like everything else, carrying the one thing a
-// block is actually for: what moved across it.
+// block is actually for: what moved across it. That list is one line per exercise and sits
+// in the middle of the stream, so it opens on a tap rather than pushing the older sessions
+// down; the heading and dates stay, so a closed block still says what and when.
 function BlockMarker({ blockIndex, workouts, activityCount }) {
   const customEx = useStore((s) => s.customEx)
+  const [open, setOpen] = useState(false)
   const changes = blockWeightChanges(workouts)
   const first = workouts[0]
   const last = workouts[workouts.length - 1]
-  return (
-    <div className="block-marker">
+  const summary = (
+    <>
       <div className="block-marker-head">
         <span className="block-marker-title">Block {blockIndex + 1}</span>
         <span className="block-marker-count tnum">
           {workouts.length} sessions
           {activityCount ? ` · ${activityCount}` : ''}
+          {changes.length > 0 && (
+            <span className={open ? 'filter-chevron open' : 'filter-chevron'}>
+              <Icon name="chevron" size={14} />
+            </span>
+          )}
         </span>
       </div>
       {first && last && (
@@ -155,24 +171,55 @@ function BlockMarker({ blockIndex, workouts, activityCount }) {
           {fmtDate(first.startedAt)} – {fmtDate(last.finishedAt)}
         </div>
       )}
+    </>
+  )
+  return (
+    <div className="block-marker">
+      {changes.length > 0 ? (
+        <button type="button" className="block-marker-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+          {summary}
+        </button>
+      ) : (
+        summary
+      )}
       {changes.length > 0 && (
-        <div className="block-changes">
-          {changes.map((c) => {
-            const ex = getExercise(c.exerciseId, customEx)
-            const diff = Math.round((c.last - c.first) * 100) / 100
-            return (
-              <div className="block-change" key={c.exerciseId}>
-                <span className="block-change-name">{exerciseName(ex)}</span>
-                <span className={`block-change-value tnum${diff > 0 ? ' up' : diff < 0 ? ' down' : ''}`}>
-                  {c.first} → {c.last} kg
-                </span>
-              </div>
-            )
-          })}
+        <div className="disclosure" data-open={open || undefined}>
+          <div className="disclosure-body">
+            <div className="block-changes">
+              {changes.map((c) => {
+                const ex = getExercise(c.exerciseId, customEx)
+                const diff = Math.round((c.last - c.first) * 100) / 100
+                return (
+                  <div className="block-change" key={c.exerciseId}>
+                    <span className="block-change-name">{exerciseName(ex)}</span>
+                    <span className={`block-change-value tnum${diff > 0 ? ' up' : diff < 0 ? ' down' : ''}`}>
+                      {c.first} → {c.last} kg
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         </div>
       )}
     </div>
   )
+}
+
+// Sets and volume, as the timeline row and the workout's own sheet both state them.
+function workoutFacts(workout) {
+  const sets = setsCompleted(workout.entries)
+  const volume = totalVolume(workout.entries)
+  return [
+    `${sets} ${sets === 1 ? 'set' : 'sets'}`,
+    volume > 0 ? `${volume.toLocaleString('en-GB')} kg` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+function workoutMinutes(workout) {
+  return `${Math.round(durationSeconds(workout.startedAt, workout.finishedAt) / 60)} min`
 }
 
 // Leads with what it was, not when. The day heading above already carries the date, so
@@ -180,14 +227,7 @@ function BlockMarker({ blockIndex, workouts, activityCount }) {
 function WorkoutRow({ workout, onSelect }) {
   const customEx = useStore((s) => s.customEx)
   const ex = getExercise(workout.entries[0]?.exerciseId, customEx)
-  const sets = setsCompleted(workout.entries)
-  const volume = totalVolume(workout.entries)
-  const detail = [
-    `${sets} ${sets === 1 ? 'set' : 'sets'}`,
-    volume > 0 ? `${volume.toLocaleString('en-GB')} kg` : null,
-  ]
-    .filter(Boolean)
-    .join(' · ')
+  const detail = workoutFacts(workout)
   return (
     <button type="button" className="row" onClick={onSelect}>
       {ex && <Thumb exercise={ex} />}
@@ -195,9 +235,7 @@ function WorkoutRow({ workout, onSelect }) {
         <div className="title">{workout.templateName}</div>
         <div className="subtitle tnum">{detail}</div>
       </div>
-      <span className="row-value metric">
-        {fmtDuration(durationSeconds(workout.startedAt, workout.finishedAt))}
-      </span>
+      <span className="row-value metric">{workoutMinutes(workout)}</span>
       <span className="row-chevron">
         <Icon name="chevron" size={16} />
       </span>
@@ -239,26 +277,45 @@ function ActivityRow({ activity, onSelect }) {
   )
 }
 
+// The change from the previous session of the same exercise, worded as the finish summary
+// words it. Read from this session's place in the exercise's history, so an old workout
+// compares against the one before it rather than against today.
+function changeFromPrevious(history, finishedAt, topWeight) {
+  const i = history.findIndex((h) => h.at === finishedAt)
+  if (i < 1 || topWeight == null) return null
+  const diff = Math.round((topWeight - history[i - 1].topWeight) * 100) / 100
+  return (
+    <span className={`delta${diff > 0 ? ' up' : diff < 0 ? ' down' : ''}`}>
+      {diff === 0 ? 'Held' : `${diff > 0 ? '+' : '−'}${Math.abs(diff)} kg`}
+    </span>
+  )
+}
+
 function WorkoutDetail({ workout, onClose, onDelete, onOpenExercise }) {
   const customEx = useStore((s) => s.customEx)
   const workouts = useStore((s) => s.workouts)
   const setSet = (entryIdx, setIdx, patch) => useStore.getState().updateHistoricalSet(workout.id, entryIdx, setIdx, patch)
 
-
   return (
-    <Sheet title={fmtDateTime(workout.finishedAt)} onClose={onClose}>
+    <Sheet title={workout.templateName} onClose={onClose}>
+      <p className="detail-meta tnum">
+        {fmtDateTime(workout.finishedAt)} · {workoutMinutes(workout)} · {workoutFacts(workout)}
+      </p>
       {workout.entries.map((entry, ei) => {
         const ex = getExercise(entry.exerciseId, customEx)
         const history = exerciseHistory(workouts, entry.exerciseId)
         return (
-          <div key={ei} className="detail-exercise">
-            <button type="button" className="ex-open" onClick={() => ex && onOpenExercise(ex)}>
-              {exerciseName(ex)}
-            </button>
+          <Group key={ei}>
+            <Row
+              thumb={ex && <Thumb exercise={ex} />}
+              title={exerciseName(ex)}
+              value={changeFromPrevious(history, workout.finishedAt, heaviestDone(entry.sets))}
+              chevron={Boolean(ex)}
+              onClick={ex ? () => onOpenExercise(ex) : undefined}
+            />
             <div className="set-table">
               <div className="set-table-head">
                 <span className="col-set">Set</span>
-                <span className="col-last" />
                 <span className="col-num">kg</span>
                 <span className="col-num">Reps</span>
                 <span />
@@ -266,7 +323,6 @@ function WorkoutDetail({ workout, onClose, onDelete, onOpenExercise }) {
               {entry.sets.map((set, si) => (
                 <div key={si} className="set-table-row">
                   <span className="col-set tnum">{si + 1}</span>
-                  <span className="col-last" />
                   <NumCell
                     value={set.weightKg}
                     label={`Set ${si + 1} weight in kg`}
@@ -283,21 +339,12 @@ function WorkoutDetail({ workout, onClose, onDelete, onOpenExercise }) {
                     aria-label={set.done ? `Un-tick set ${si + 1}` : `Tick set ${si + 1}`}
                     onClick={() => setSet(ei, si, { done: !set.done })}
                   >
-                    {set.done ? '✓' : ''}
+                    {set.done && <Icon name="check" size={20} />}
                   </button>
                 </div>
               ))}
             </div>
-            {history.length > 1 && (
-              <>
-                <Sparkline values={history.map((h) => h.topWeight)} />
-                <p className="ex-trend tnum">
-                  {fmtDate(history[0].at)} {history[0].topWeight} kg → {fmtDate(history[history.length - 1].at)}{' '}
-                  {history[history.length - 1].topWeight} kg
-                </p>
-              </>
-            )}
-          </div>
+          </Group>
         )
       })}
       <button type="button" className="btn btn-destructive" onClick={onDelete}>
@@ -305,6 +352,26 @@ function WorkoutDetail({ workout, onClose, onDelete, onOpenExercise }) {
       </button>
     </Sheet>
   )
+}
+
+// The timeline's days share one card until a block boundary, which breaks the card for the
+// block's summary. A card per day was seven floating boxes for a week, most holding one row.
+function cardsBetweenBlocks(rows) {
+  const out = []
+  let card = null
+  for (const row of rows) {
+    if (row.type === 'block') {
+      card = null
+      out.push(row)
+    } else {
+      if (!card) {
+        card = { type: 'card', key: `card-${row.key}`, rows: [] }
+        out.push(card)
+      }
+      card.rows.push(row)
+    }
+  }
+  return out
 }
 
 export default function History() {
@@ -324,9 +391,10 @@ export default function History() {
 
   const rows = useMemo(() => {
     const items = mergeItems(workouts, activities).filter((item) => matchesFilter(item, filter))
-    return timelineRows(groupByDay(items), filter == null)
-  }, [workouts, activities, filter])
+    return timelineRows(groupByDay(items), progress.blockIndex, filter == null)
+  }, [workouts, activities, filter, progress.blockIndex])
   const byBlock = useMemo(() => blockWorkouts(workouts), [workouts])
+  const blockDone = sessionsDone(workouts, progress.blockIndex)
   const activityCounts = useMemo(() => {
     const map = new Map()
     for (const a of activities) map.set(a.blockIndex, (map.get(a.blockIndex) || 0) + 1)
@@ -388,51 +456,59 @@ export default function History() {
           </div>
         ) : (
           <>
-            <p className="timeline-lead tnum">
-              {/* Counted from the logs, not from progress.sessionIndex — deleting a session
-                  on this very screen leaves that counter behind. Today adds one to name the
-                  session about to be done; this screen is a record, so it counts what
-                  happened. */}
-              {`Block ${progress.blockIndex + 1} · ${sessionsDone(workouts, progress.blockIndex)} of ${sessionCount} sessions done`}
-            </p>
+            {/* Counted from the logs, not from progress.sessionIndex — deleting a session
+                on this very screen leaves that counter behind. Today adds one to name the
+                session about to be done; this screen is a record, so it counts what
+                happened. */}
+            <Section>Block {progress.blockIndex + 1}</Section>
+            <div className="block-lead tnum">
+              <ProgressRing fraction={blockDone / sessionCount} size={44} stroke={5} />
+              <span className="block-lead-figure">
+                {blockDone}
+                <span className="block-lead-of"> / {sessionCount}</span>
+              </span>
+              <span className="block-lead-caption">sessions done</span>
+            </div>
             {/* One stream. A day heading, the items logged that day, and a block's summary
                 where the walk crosses out of it. Days with nothing in them are absent
                 rather than drawn as rest: this is a record of what happened, and padding it
                 with what did not is how a log starts keeping score. */}
-            {rows.map((row) => {
-              if (row.type === 'day') {
-                return <Section key={row.key}>{fmtDayHeading(row.date)}</Section>
-              }
-              if (row.type === 'block') {
-                return (
-                  <BlockMarker
-                    key={row.key}
-                    blockIndex={row.blockIndex}
-                    workouts={byBlock.get(row.blockIndex) || []}
-                    activityCount={fmtActivityCount(activityCounts.get(row.blockIndex) || 0)}
-                  />
-                )
-              }
-              return (
-                <Group key={row.key}>
-                  {row.items.map((item) =>
-                    item.kind === 'workout' ? (
-                      <WorkoutRow
-                        key={item.data.id}
-                        workout={item.data}
-                        onSelect={() => setDetailId(item.data.id)}
-                      />
+            {cardsBetweenBlocks(rows).map((seg) =>
+              seg.type === 'block' ? (
+                <BlockMarker
+                  key={seg.key}
+                  blockIndex={seg.blockIndex}
+                  workouts={byBlock.get(seg.blockIndex) || []}
+                  activityCount={fmtActivityCount(activityCounts.get(seg.blockIndex) || 0)}
+                />
+              ) : (
+                <Group key={seg.key}>
+                  {seg.rows.map((row) =>
+                    row.type === 'day' ? (
+                      <div key={row.key} className="timeline-day">
+                        {fmtDayHeading(row.date)}
+                      </div>
                     ) : (
-                      <ActivityRow
-                        key={item.data.id}
-                        activity={item.data}
-                        onSelect={() => setActivityId(item.data.id)}
-                      />
+                      row.items.map((item) =>
+                        item.kind === 'workout' ? (
+                          <WorkoutRow
+                            key={item.data.id}
+                            workout={item.data}
+                            onSelect={() => setDetailId(item.data.id)}
+                          />
+                        ) : (
+                          <ActivityRow
+                            key={item.data.id}
+                            activity={item.data}
+                            onSelect={() => setActivityId(item.data.id)}
+                          />
+                        ),
+                      )
                     ),
                   )}
                 </Group>
-              )
-            })}
+              ),
+            )}
           </>
         )}
       </div>

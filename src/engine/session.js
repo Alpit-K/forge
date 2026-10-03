@@ -87,6 +87,19 @@ export function heaviestDone(sets) {
   return best
 }
 
+// Where the exercise summary sends you: the first exercise after `from` with a set still to
+// do, wrapping round to the ones before it. -1 only when every set is done. Position in the
+// list is not progress — the overview lets you take exercises in any order, and reading the
+// last one as the end offered Finish with whole exercises untouched.
+export function nextUnfinished(exercises, from) {
+  const n = exercises.length
+  for (let k = 1; k < n; k++) {
+    const i = (from + k) % n
+    if (exercises[i].performed.some((s) => !s.done)) return i
+  }
+  return -1
+}
+
 // What a plan slot recorded in a finished log. Two spellings have to be checked: normally
 // the entry sits under the slot's effective id, but a mid-session swap rewrites that id to
 // the exercise actually performed and names the slot in `swappedFrom`.
@@ -122,6 +135,22 @@ export function exerciseHistory(workouts, exerciseId) {
     })
   }
   return out
+}
+
+// strength-block-2's rule, made visible while the block runs rather than found in the export
+// after it: a lift no heavier than it was four sessions ago means the rep window or the step
+// is wrong, not the effort. The engine cannot see this — an advance that deloads straight
+// back (100 → 110 → 100) is two correct decisions that add up to nothing. It is information
+// only: nothing reads it to change a target. Null when there is not four sessions of history
+// or a session in the window has no weight to compare.
+export const STALL_SESSIONS = 4
+
+export function stalledAt(history) {
+  if (history.length < STALL_SESSIONS) return null
+  const from = history[history.length - STALL_SESSIONS].topWeight
+  const to = history[history.length - 1].topWeight
+  if (from == null || to == null || to > from) return null
+  return to
 }
 
 // The quiet performance facts, from the history above. No badges and no thresholds — these

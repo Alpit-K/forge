@@ -42,6 +42,7 @@ export function runHistory(activities) {
       // for how hard a run was is how the two drift apart. Absent on every run logged
       // before the field existed, so it is null rather than assumed.
       avgHr: typeof a.avgHr === 'number' && Number.isFinite(a.avgHr) ? a.avgHr : null,
+      walkBreaks: Number.isInteger(a.walkBreaks) ? a.walkBreaks : null,
     }))
     .sort((x, y) => Date.parse(x.at) - Date.parse(y.at))
 }

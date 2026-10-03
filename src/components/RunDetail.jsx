@@ -1,6 +1,6 @@
 import { useStore } from '../store.js'
 import { runHistory, runStats } from '../engine/activity.js'
-import { fmtDate, fmtDistance, fmtHr, fmtPaceSec, fmtRunCount } from '../lib/format.js'
+import { fmtDate, fmtDistance, fmtHr, fmtPaceSec, fmtRunCount, fmtWalkBreaks } from '../lib/format.js'
 import { runTypeLabel } from '../lib/activities.js'
 import { Stat } from './ExerciseDetail.jsx'
 import Sparkline from './Sparkline.jsx'
@@ -115,6 +115,7 @@ export default function RunDetail() {
                 fmtDistance(r.distanceKm),
                 fmtPaceSec(r.paceSecPerKm),
                 fmtHr(r.avgHr),
+                fmtWalkBreaks(r.walkBreaks),
               ]
                 .filter(Boolean)
                 .join(' · ')}

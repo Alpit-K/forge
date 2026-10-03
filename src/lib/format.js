@@ -84,6 +84,14 @@ export function fmtHr(bpm) {
   return `${Math.round(bpm)} bpm`
 }
 
+// The 10k block's run/walk count. Zero is a real answer — a continuous run, which is what the
+// block builds towards — so only an absent count says nothing.
+export function fmtWalkBreaks(n) {
+  if (n == null) return null
+  if (n === 0) return 'continuous'
+  return `${n} walk ${n === 1 ? 'break' : 'breaks'}`
+}
+
 // Pace from the two things actually typed.
 export function fmtPace(km, minutes) {
   if (!km || !minutes || km <= 0 || minutes <= 0) return null

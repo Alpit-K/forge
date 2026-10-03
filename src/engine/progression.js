@@ -6,10 +6,19 @@ import { getExercise } from '../lib/exercises.js'
 export const FIRST_REASON = "First time — enter the weight you're lifting"
 export const DELOAD_REASON = 'Deload 5% — two sessions short of target'
 
-// An explicit per-exercise increment wins, else dumbbell steps in 2 kg, else 2.5 kg.
-export function incrementFor(template, equipment) {
+// An explicit per-exercise increment wins, else the equipment's own step. A cable
+// steps by the muscle it trains: 2.5 kg for a small one, where 5 kg on a 20 kg pushdown is
+// +25% and a lateral raise at 2.5 kg would double, and 5 kg for a large one. A lever machine
+// is a coarse pin stack at 5. Plate-loaded kit — barbell, smith, sled — keeps 2.5, the
+// smallest pair of plates.
+const SMALL_MUSCLES = new Set(['biceps', 'triceps', 'delts', 'abs'])
+
+export function incrementFor(template, ex) {
   if (template && template.incrementKg != null) return template.incrementKg
+  const equipment = ex && ex.equipment
   if (equipment === 'dumbbell') return 2
+  if (equipment === 'cable') return SMALL_MUSCLES.has(ex.target) ? 2.5 : 5
+  if (equipment === 'leverage machine') return 5
   return 2.5
 }
 
@@ -137,10 +146,14 @@ function earnsAdvance(entry, repsMin, repsMax, prescribed) {
   return { statuses, allTop, withinOneRep, reps, earned: allTop || withinOneRep }
 }
 
-// 5% off, never rounding back onto the weight you were already lifting.
+const kg = (weight) => Math.round(weight * 100) / 100
+
+// 5% off in whole increments counted from the weight actually lifted, never fewer than
+// one. Counting from the base rather than rounding onto the increment's grid keeps a weight
+// that is off that grid — 22.5 kg on a 5 kg step — on the weights its own kit has.
 function deloadFrom(base, increment) {
-  const deload = roundToIncrement(base * 0.95, increment)
-  return deload >= base ? roundToIncrement(base - increment, increment) : deload
+  const drop = -roundToIncrement(-base * 0.05, increment)
+  return kg(base - Math.max(drop, increment))
 }
 
 // What the scheme asks for after the session at `index`. This is the whole of the
@@ -158,7 +171,9 @@ function stepAfter(history, index, exerciseId, rules, userMoved) {
   if (advance.earned) {
     return {
       kind: 'advance',
-      weightKg: roundToIncrement(base + increment, increment),
+      // Exactly one increment on the weight lifted. Rounding the sum onto the increment's
+      // grid turned 2.5 + 5 into 10 and 22.5 + 5 into 30.
+      weightKg: kg(base + increment),
       base,
       entry,
       advance,
@@ -279,7 +294,7 @@ export function nextTarget(exerciseId, state, rotationIndex = null) {
     repsMin: template.repsMin,
     repsMax: template.repsMax,
     prescribed: template.sets,
-    increment: incrementFor(template, ex && ex.equipment),
+    increment: incrementFor(template, ex),
   }
   return targetFor(effectiveId, rules, workouts)
 }

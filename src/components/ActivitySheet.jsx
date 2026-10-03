@@ -58,6 +58,7 @@ export default function ActivitySheet({ activity, preset, onSave, onDelete, onOp
   const [matchFormat, setMatchFormat] = useState(init ? init.matchFormat || null : null)
   const [note, setNote] = useState(init ? init.note || '' : '')
   const [hr, setHr] = useState(init && init.avgHr != null ? String(init.avgHr) : '')
+  const [walks, setWalks] = useState(init && init.walkBreaks != null ? String(init.walkBreaks) : '')
 
   const mins = Math.round(Number(minutes))
   const minutesValid = minutes.trim() !== '' && Number.isFinite(mins) && mins > 0
@@ -83,7 +84,14 @@ export default function ActivitySheet({ activity, preset, onSave, onDelete, onOp
   const hrEntered = hr.trim() !== ''
   const hrValid = !hrEntered || (Number.isFinite(bpm) && bpm > 0)
 
-  const valid = minutesValid && distanceValid && hrValid
+  // The 10k block judges a run week to week on how many walk breaks it took. Optional, and
+  // unlike distance a zero is a real value — a continuous run — so it is kept, not dropped.
+  // A whole number or nothing: a fraction of a walk break is not something the watch says.
+  const walkCount = Number(walks)
+  const walksEntered = walks.trim() !== ''
+  const walksValid = !walksEntered || (Number.isInteger(walkCount) && walkCount >= 0)
+
+  const valid = minutesValid && distanceValid && hrValid && walksValid
 
   // A run's type and its intensity are two independent facts — "long" is what kind of run,
   // and "easy"/"hard" is how it went — exactly as tennis keeps match format and intensity
@@ -116,6 +124,8 @@ export default function ActivitySheet({ activity, preset, onSave, onDelete, onOp
       matchFormat: showFormat ? matchFormat : null,
       intensity,
       avgHr: hrEntered ? bpm : null,
+      // Cleared when the type stops being a run, as distance and run type are.
+      walkBreaks: isRun && walksEntered ? walkCount : null,
       note: note.trim() || null,
     })
     onClose()
@@ -298,6 +308,22 @@ export default function ActivitySheet({ activity, preset, onSave, onDelete, onOp
             />
           }
         />
+        {isRun && (
+          <Row
+            title="Walk breaks"
+            value={
+              <input
+                className="row-field tnum"
+                type="number"
+                inputMode="numeric"
+                value={walks}
+                placeholder="0 if none, optional"
+                aria-label="Number of walk breaks"
+                onChange={(e) => setWalks(e.target.value)}
+              />
+            }
+          />
+        )}
         <Row
           title="Note"
           value={

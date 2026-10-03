@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createStore } from './store.js'
-import { createInitialState } from './lib/seed.js'
+import { createInitialState, seedPlan } from './lib/seed.js'
 import { FIRST_REASON, nextTarget } from './engine/progression.js'
 import { ensureAudioContext } from './lib/audio.js'
 import { acquireWakeLock } from './lib/wakeLock.js'
@@ -236,6 +236,49 @@ describe('importing a backup with a workout in progress', () => {
     expect(useStore.getState().importBackup(JSON.stringify(state)).ok).toBe(true)
     expect(ensureAudioContext).toHaveBeenCalled()
     expect(acquireWakeLock).toHaveBeenCalled()
+  })
+})
+
+describe('importPlan', () => {
+  const memory = () => ({ getItem: () => null, setItem: () => {}, removeItem: () => {} })
+  const nextPlan = () => {
+    const plan = structuredClone(seedPlan)
+    plan.name = 'Block 3'
+    plan.rotation[0].exercises[0].repsMin = 6
+    return plan
+  }
+
+  it('replaces the plan and clears swaps, and leaves the record alone', () => {
+    const useStore = createStore(memory())
+    const log = { id: 'w1', blockIndex: 1, sessionIndex: 11, rotationIndex: 0, entries: [] }
+    const run = { id: 'r1', type: 'run', at: '2026-09-27T07:00:00.000Z' }
+    useStore.setState({
+      workouts: [log],
+      activities: [run],
+      progress: { blockIndex: 2, sessionIndex: 0 },
+      swaps: { '0043': '0739' },
+    })
+
+    const result = useStore.getState().importPlan(JSON.stringify({ version: 1, plan: nextPlan() }))
+
+    expect(result.ok).toBe(true)
+    const s = useStore.getState()
+    expect(s.plan.name).toBe('Block 3')
+    expect(s.plan.rotation[0].exercises[0].repsMin).toBe(6)
+    expect(s.swaps).toEqual({})
+    expect(s.workouts).toEqual([log])
+    expect(s.activities).toEqual([run])
+    expect(s.progress).toEqual({ blockIndex: 2, sessionIndex: 0 })
+  })
+
+  it('changes nothing when the file is refused', () => {
+    const useStore = createStore(memory())
+    const before = useStore.getState().plan
+    const plan = nextPlan()
+    plan.rotation[1].exercises[2].exerciseId = '9999'
+
+    expect(useStore.getState().importPlan(JSON.stringify({ version: 1, plan })).ok).toBe(false)
+    expect(useStore.getState().plan).toBe(before)
   })
 })
 

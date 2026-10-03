@@ -8,6 +8,7 @@ import {
   slotResult,
   sessionsDone,
   isBlockComplete,
+  nextUnfinished,
 } from '../engine/session.js'
 import { recommend, nextSession } from '../engine/coach.js'
 import { weekDays, dayIndex } from '../engine/week.js'
@@ -583,6 +584,23 @@ function BlockCompleteView() {
 // sets, and a summary when the exercise is done. Which one shows is derived, not stored —
 // the current set is simply the first one not ticked, so un-ticking from the this-session
 // strip walks you straight back to it.
+// One segment per exercise. "Done" is read from the sets, never from position: the overview
+// lets you take exercises in any order, and shading everything before the current one marked
+// exercises you had jumped past as finished.
+function MomentumBar({ exercises, current }) {
+  return (
+    <div className="logger-bar" aria-hidden="true">
+      {exercises.map((e, i) => (
+        <span
+          key={i}
+          className="logger-bar-seg"
+          data-state={i === current ? 'current' : e.performed.every((s) => s.done) ? 'done' : 'todo'}
+        />
+      ))}
+    </div>
+  )
+}
+
 function WorkoutFlow({ onFinish }) {
   const state = useStore((s) => s)
   const { active, customEx } = state
@@ -594,8 +612,8 @@ function WorkoutFlow({ onFinish }) {
   const exIdx = active.currentIndex
   const current = active.exercises[exIdx] || null
   const exDef = current ? getExercise(current.exerciseId, customEx) : null
-  const nextEx = active.exercises[exIdx + 1]
-  const nextDef = nextEx ? getExercise(nextEx.exerciseId, customEx) : null
+  const nextIdx = current ? nextUnfinished(active.exercises, exIdx) : -1
+  const nextDef = nextIdx !== -1 ? getExercise(active.exercises[nextIdx].exerciseId, customEx) : null
 
   const setIdx = current ? current.performed.findIndex((s) => !s.done) : -1
   const exerciseDone = current ? setIdx === -1 : false
@@ -720,15 +738,7 @@ function WorkoutFlow({ onFinish }) {
         <NavBar compact title={exerciseName(exDef)} actions={<>{navActions}{overviewButton}</>} />
         <div className="screen-body workout-body">
           {/* Same bar, same position, same meaning as the logger you were on a moment ago. */}
-          <div className="logger-bar" aria-hidden="true">
-            {active.exercises.map((_, i) => (
-              <span
-                key={i}
-                className="logger-bar-seg"
-                data-state={i < exIdx ? 'done' : i === exIdx ? 'current' : 'todo'}
-              />
-            ))}
-          </div>
+          <MomentumBar exercises={active.exercises} current={exIdx} />
           <RestTimer
             restStartedAt={active.restStartedAt}
             restSec={active.restDuration}
@@ -757,20 +767,12 @@ function WorkoutFlow({ onFinish }) {
   }
 
   if (exerciseDone) {
-    const isLast = exIdx === active.exercises.length - 1
+    const allDone = nextIdx === -1
     return (
       <>
         <NavBar compact title={exerciseName(exDef)} actions={<>{navActions}{overviewButton}</>} />
         <div className="screen-body">
-          <div className="logger-bar" aria-hidden="true">
-            {active.exercises.map((_, i) => (
-              <span
-                key={i}
-                className="logger-bar-seg"
-                data-state={i < exIdx ? 'done' : i === exIdx ? 'current' : 'todo'}
-              />
-            ))}
-          </div>
+          <MomentumBar exercises={active.exercises} current={exIdx} />
           <div className="done-hero">
             <span className="done-mark">
               <Icon name="check" size={26} />
@@ -795,10 +797,10 @@ function WorkoutFlow({ onFinish }) {
             <p className="progression-reason">{current.reason}</p>
           </div>
 
-          <button type="button" className="btn-primary" onClick={() => (isLast ? finish() : store().nextExercise())}>
-            {isLast ? 'Finish Workout' : 'Next exercise'}
+          <button type="button" className="btn-primary" onClick={() => (allDone ? finish() : store().goToExercise(nextIdx))}>
+            {allDone ? 'Finish Workout' : 'Next exercise'}
           </button>
-          {!isLast && nextDef && <p className="next-up">{exerciseName(nextDef)}</p>}
+          {!allDone && nextDef && <p className="next-up">{exerciseName(nextDef)}</p>}
           <button
             type="button"
             className="btn btn-quiet"
@@ -838,15 +840,7 @@ function WorkoutFlow({ onFinish }) {
 
         {/* One segment per exercise: done, current, still to come. Understated on purpose —
             it answers "how far in am I" and nothing else. No score, no streak, no reward. */}
-        <div className="logger-bar" aria-hidden="true">
-          {active.exercises.map((_, i) => (
-            <span
-              key={i}
-              className="logger-bar-seg"
-              data-state={i < exIdx ? 'done' : i === exIdx ? 'current' : 'todo'}
-            />
-          ))}
-        </div>
+        <MomentumBar exercises={active.exercises} current={exIdx} />
 
         <p className="logger-target tnum">
           {set.weightKg != null ? `${set.weightKg} kg × ` : ''}

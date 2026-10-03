@@ -9,6 +9,10 @@ export const ERRORS = {
   newer: 'This backup is from a newer version of Forge.',
   older: "This backup is from an older version of Forge and can't be imported yet.",
   damaged: 'That backup is damaged — some of its data is the wrong shape.',
+  planFile: "That's a plan file — use Import plan.",
+  fullBackup: "That's a full backup — use Import backup.",
+  badPlan: "That plan can't be used — an exercise is missing a number or its rep range is backwards.",
+  unknownExercise: "That plan names an exercise this app doesn't have.",
 }
 
 function isObject(value) {
@@ -57,8 +61,8 @@ function isWellFormed(data) {
   return true
 }
 
-// Returns { ok: true, data } or { ok: false, message }.
-export function validateBackup(jsonString) {
+// The checks every file starts with, backup or plan: JSON, an object, this version.
+function parseVersioned(jsonString) {
   let data
   try {
     data = JSON.parse(jsonString)
@@ -77,10 +81,72 @@ export function validateBackup(jsonString) {
   if (data.version < CURRENT_VERSION) {
     return { ok: false, message: ERRORS.older }
   }
+  return { ok: true, data }
+}
+
+// A plan file carries the plan and nothing else the store holds — `exerciseNames` is allowed
+// beside it because it is export-only and makes the file readable. It has to be told apart
+// from a backup because the backup path fills every ABSENT key from the defaults: a plan
+// file imported as a backup would come back with an empty `workouts` and wipe the history.
+function isPlanFile(data) {
+  const keys = Object.keys(data).filter((k) => k !== 'version' && k !== 'exerciseNames')
+  return keys.length === 1 && keys[0] === 'plan'
+}
+
+// Returns { ok: true, data } or { ok: false, message }.
+export function validateBackup(jsonString) {
+  const parsed = parseVersioned(jsonString)
+  if (!parsed.ok) return parsed
+  const { data } = parsed
   if (!isWellFormed(data)) {
     return { ok: false, message: ERRORS.damaged }
   }
+  if (isPlanFile(data)) {
+    return { ok: false, message: ERRORS.planFile }
+  }
   return { ok: true, data }
+}
+
+const isCount = (n) => Number.isInteger(n) && n > 0
+
+// The plan is the only thing a plan import replaces, so it is checked field by field: the
+// engine does arithmetic on every one of these numbers, and a `sessionCount` that is not
+// one breaks the block gate. `customEx` is the store's own list — an id that resolves to
+// nothing would put a blank name on every surface that shows it.
+export function validatePlan(jsonString, customEx = []) {
+  const parsed = parseVersioned(jsonString)
+  if (!parsed.ok) return parsed
+  const { data } = parsed
+  if ('workouts' in data) {
+    return { ok: false, message: ERRORS.fullBackup }
+  }
+  if (!('plan' in data) || !isWellFormed({ plan: data.plan })) {
+    return { ok: false, message: ERRORS.damaged }
+  }
+  const { plan } = data
+  if (!isCount(plan.sessionCount) || plan.rotation.length === 0) {
+    return { ok: false, message: ERRORS.badPlan }
+  }
+  for (const day of plan.rotation) {
+    if (typeof day.name !== 'string' || day.exercises.length === 0) {
+      return { ok: false, message: ERRORS.badPlan }
+    }
+    for (const ex of day.exercises) {
+      const numbersOk =
+        isObject(ex) &&
+        isCount(ex.sets) &&
+        isCount(ex.repsMin) &&
+        isCount(ex.repsMax) &&
+        ex.repsMin <= ex.repsMax &&
+        Number.isInteger(ex.restSec) && ex.restSec >= 0 &&
+        (ex.incrementKg == null || (typeof ex.incrementKg === 'number' && ex.incrementKg > 0))
+      if (!numbersOk) return { ok: false, message: ERRORS.badPlan }
+      if (!getExercise(ex.exerciseId, customEx)) {
+        return { ok: false, message: ERRORS.unknownExercise }
+      }
+    }
+  }
+  return { ok: true, plan }
 }
 
 export function backupFilename(date = new Date()) {

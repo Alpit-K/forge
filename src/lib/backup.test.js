@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { validateBackup, backupFilename, serializeState, ERRORS } from './backup.js'
-import { createInitialState } from './seed.js'
+import { validateBackup, validatePlan, backupFilename, serializeState, ERRORS } from './backup.js'
+import { createInitialState, seedPlan } from './seed.js'
 
 describe('validateBackup', () => {
   it('rejects non-JSON', () => {
@@ -98,6 +98,61 @@ describe('validateBackup shape', () => {
     preFlag.workouts = [{ ...state.workouts[0] }]
     delete preFlag.workouts[0].freeform
     expect(validateBackup(serializeState(preFlag)).ok).toBe(true)
+  })
+})
+
+// A plan file and a backup are told apart in both directions, because the backup path fills
+// every absent key from the defaults — a plan file restored as a backup wipes the history.
+describe('validatePlan', () => {
+  const planFile = (plan = seedPlan) => JSON.stringify({ version: 1, plan })
+  const withExercise = (patch) => {
+    const plan = structuredClone(seedPlan)
+    Object.assign(plan.rotation[0].exercises[0], patch)
+    return planFile(plan)
+  }
+
+  it('accepts the seeded plan', () => {
+    const r = validatePlan(planFile())
+    expect(r.ok).toBe(true)
+    expect(r.plan.rotation).toHaveLength(3)
+  })
+
+  it('accepts a plan file carrying exerciseNames for readability', () => {
+    const json = JSON.stringify({ version: 1, plan: seedPlan, exerciseNames: { '0043': 'x' } })
+    expect(validatePlan(json).ok).toBe(true)
+  })
+
+  it('refuses a full backup and sends it to the other row', () => {
+    expect(validatePlan(serializeState(createInitialState())).message).toBe(ERRORS.fullBackup)
+  })
+
+  it('refuses a plan with no session count, which the block gate divides by', () => {
+    const plan = structuredClone(seedPlan)
+    delete plan.sessionCount
+    expect(validatePlan(planFile(plan)).message).toBe(ERRORS.badPlan)
+  })
+
+  it('refuses a backwards or missing rep range', () => {
+    expect(validatePlan(withExercise({ repsMin: 12, repsMax: 8 })).message).toBe(ERRORS.badPlan)
+    expect(validatePlan(withExercise({ sets: '3' })).message).toBe(ERRORS.badPlan)
+    expect(validatePlan(withExercise({ incrementKg: 0 })).message).toBe(ERRORS.badPlan)
+  })
+
+  it('refuses an exercise id this app cannot name', () => {
+    expect(validatePlan(withExercise({ exerciseId: '9999' })).message).toBe(ERRORS.unknownExercise)
+  })
+
+  it('resolves a custom exercise against the list it is given', () => {
+    const json = withExercise({ exerciseId: 'c1' })
+    expect(validatePlan(json, [{ id: 'c1', name: 'Mine' }]).ok).toBe(true)
+  })
+})
+
+describe('validateBackup and a plan file', () => {
+  it('refuses a plan file under Import backup', () => {
+    const r = validateBackup(JSON.stringify({ version: 1, plan: seedPlan }))
+    expect(r.ok).toBe(false)
+    expect(r.message).toBe(ERRORS.planFile)
   })
 })
 

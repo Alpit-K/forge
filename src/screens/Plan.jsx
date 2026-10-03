@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useStore } from '../store.js'
 import { getExercise, exerciseName } from '../lib/exercises.js'
 import { incrementFor } from '../engine/progression.js'
+import { exerciseHistory, stalledAt, STALL_SESSIONS } from '../engine/session.js'
+import { plannedSetsPerWeek } from '../engine/muscles.js'
 import { fmtRest } from '../lib/format.js'
 import NavBar from '../components/NavBar.jsx'
 import Icon from '../components/Icon.jsx'
@@ -59,9 +61,10 @@ function EditSheet({ sessionIdx, exerciseIdx, onClose, onSwap }) {
 
       <Section>Progression</Section>
       <Group>
-        {/* Auto is the equipment's own increment — 2 kg on dumbbell work, 2.5 elsewhere —
-            resolved through the same `incrementFor` the engine uses, so the label cannot
-            state a number the progression would not apply. */}
+        {/* Auto is the equipment's own increment — 2 kg dumbbell, 2.5 or 5 kg cable by the
+            muscle it trains, 5 kg lever machine, 2.5 plates — resolved through the same
+            `incrementFor` the engine uses, so the label cannot state a number the progression
+            would not apply. */}
         <Row
           title="Increment"
           subtitle="How much the weight moves when you clear the top of the range"
@@ -70,7 +73,7 @@ function EditSheet({ sessionIdx, exerciseIdx, onClose, onSwap }) {
               label="Increment"
               value={entry.incrementKg == null ? '' : entry.incrementKg}
               options={[
-                { value: '', label: `Auto · ${incrementFor(null, ex && ex.equipment)} kg` },
+                { value: '', label: `Auto · ${incrementFor(null, ex)} kg` },
                 { value: 2, label: '2 kg' },
                 { value: 2.5, label: '2.5 kg' },
                 { value: 5, label: '5 kg' },
@@ -158,6 +161,7 @@ export default function Plan() {
               {session.exercises.map((e, ei) => {
                 const effectiveId = swaps[e.exerciseId] || e.exerciseId
                 const ex = getExercise(effectiveId, customEx)
+                const stall = stalledAt(exerciseHistory(state.workouts, effectiveId))
                 return (
                   <Row
                     key={`${si}-${e.exerciseId}-${ei}`}
@@ -171,7 +175,15 @@ export default function Plan() {
                     }
                     chevron
                     onClick={() => setEditing({ sessionIdx: si, exerciseIdx: ei })}
-                  />
+                  >
+                    {/* A fact, not an alarm — the fix is the rep window or the step, and
+                        both are one tap away in the sheet this row opens. */}
+                    {stall != null && (
+                      <div className="subtitle tnum">
+                        No gain in {STALL_SESSIONS} sessions at {stall} kg
+                      </div>
+                    )}
+                  </Row>
                 )
               })}
             </Group>
@@ -181,6 +193,23 @@ export default function Plan() {
             </button>
           </div>
         ))}
+
+        {/* The coverage table block 2 was designed from, recounted on every edit. The big
+            number is direct work; compound lifts reaching a muscle second-hand are the
+            subtitle, the way the table wrote "triceps: 3, plus every press". A zero stays:
+            it is the fact the table exists to show. */}
+        <Section>Sets per week</Section>
+        <Group>
+          {plannedSetsPerWeek(plan, swaps, customEx, state.settings.weeklyLifts).map((r) => (
+            <Row
+              key={r.group}
+              title={r.group}
+              subtitle={r.indirect > 0 ? `+${r.indirect} from compound lifts` : undefined}
+              value={<span className="tnum">{r.direct}</span>}
+              metric
+            />
+          ))}
+        </Group>
 
         {/* Last, not first: it is set a couple of times a year, and the programme is what
             this screen is for. */}

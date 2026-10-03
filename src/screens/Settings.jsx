@@ -105,7 +105,9 @@ export default function Settings({ onClose }) {
   const [importMessage, setImportMessage] = useState(null)
   const [importError, setImportError] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
-  const [confirmImport, setConfirmImport] = useState(false)
+  const [confirmImport, setConfirmImport] = useState(null)
+  // One file picker serves both imports; this says which one the chosen file is for.
+  const importKind = useRef('backup')
 
   const doExport = () => exportBackup(useStore)
 
@@ -115,10 +117,17 @@ export default function Settings({ onClose }) {
     if (!file) return
     const reader = new FileReader()
     reader.onload = () => {
-      const result = useStore.getState().importBackup(String(reader.result))
+      const text = String(reader.result)
+      const store = useStore.getState()
+      const result = importKind.current === 'plan' ? store.importPlan(text) : store.importBackup(text)
       if (result.ok) {
         setImportError(false)
-        setImportMessage('Backup restored.')
+        // Naming what arrived is what makes a wrong file obvious before the next session.
+        setImportMessage(
+          result.plan
+            ? `Plan imported — ${result.plan.rotation.map((d) => d.name).join(', ')} · ${result.plan.rotation.reduce((n, d) => n + d.exercises.length, 0)} exercises.`
+            : 'Backup restored.',
+        )
       } else {
         setImportError(true)
         setImportMessage(result.message)
@@ -207,11 +216,18 @@ export default function Settings({ onClose }) {
         />
         <Row title="Export backup" thumb={<RowIcon name="export" />} chevron onClick={doExport} />
         <Row
+          title="Import plan"
+          subtitle="Replaces the plan. Your history stays."
+          thumb={<RowIcon name="list" />}
+          chevron
+          onClick={() => setConfirmImport('plan')}
+        />
+        <Row
           title="Import backup"
           subtitle="Replaces everything currently in the app."
           thumb={<RowIcon name="import" />}
           chevron
-          onClick={() => setConfirmImport(true)}
+          onClick={() => setConfirmImport('backup')}
         />
       </Group>
       {/* Stated as a property of the app, not as a warning. It is the reason there is no
@@ -248,12 +264,15 @@ export default function Settings({ onClose }) {
 
     {confirmImport && (
       <ActionSheet
-        onClose={() => setConfirmImport(false)}
+        onClose={() => setConfirmImport(null)}
         actions={[
           {
-            label: 'Choose Backup File',
-            destructive: true,
-            onClick: () => fileRef.current && fileRef.current.click(),
+            label: confirmImport === 'plan' ? 'Choose Plan File' : 'Choose Backup File',
+            destructive: confirmImport === 'backup',
+            onClick: () => {
+              importKind.current = confirmImport
+              if (fileRef.current) fileRef.current.click()
+            },
           },
         ]}
       />

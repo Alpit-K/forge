@@ -10,6 +10,7 @@ import {
   sessionsDone,
 } from '../engine/session.js'
 import { groupByDay } from '../engine/week.js'
+import { loggedSetsPerWeek } from '../engine/muscles.js'
 import { getExercise, exerciseName } from '../lib/exercises.js'
 import {
   fmtDate,
@@ -19,6 +20,7 @@ import {
   fmtDistance,
   fmtPace,
   fmtHr,
+  fmtWalkBreaks,
 } from '../lib/format.js'
 import { ACTIVITY_TYPES, activityName, intensityLabel, runTypeLabel, matchFormatLabel } from '../lib/activities.js'
 import NavBar from '../components/NavBar.jsx'
@@ -150,6 +152,7 @@ function BlockMarker({ blockIndex, workouts, activityCount }) {
   const customEx = useStore((s) => s.customEx)
   const [open, setOpen] = useState(false)
   const changes = blockWeightChanges(workouts)
+  const coverage = loggedSetsPerWeek(workouts, customEx)
   const first = workouts[0]
   const last = workouts[workouts.length - 1]
   const summary = (
@@ -186,6 +189,7 @@ function BlockMarker({ blockIndex, workouts, activityCount }) {
         <div className="disclosure" data-open={open || undefined}>
           <div className="disclosure-body">
             <div className="block-changes">
+              <div className="caption">Working weight</div>
               {changes.map((c) => {
                 const ex = getExercise(c.exerciseId, customEx)
                 const diff = Math.round((c.last - c.first) * 100) / 100
@@ -199,6 +203,22 @@ function BlockMarker({ blockIndex, workouts, activityCount }) {
                 )
               })}
             </div>
+            {/* What the block actually logged, per week, against the plan's own count in
+                the Plan tab — the comparison block 2 was designed from. */}
+            {coverage && (
+              <div className="block-changes">
+                <div className="caption">Sets per week</div>
+                {coverage.map((r) => (
+                  <div className="block-change" key={r.group}>
+                    <span className="block-change-name">{r.group}</span>
+                    <span className="block-change-value tnum">
+                      {r.direct}
+                      {r.indirect > 0 ? ` (+${r.indirect})` : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -252,6 +272,7 @@ function ActivityRow({ activity, onSelect }) {
     typeof activity.distanceKm === 'number' ? fmtDistance(activity.distanceKm) : null,
     fmtPace(activity.distanceKm, activity.minutes),
     fmtHr(activity.avgHr),
+    fmtWalkBreaks(activity.walkBreaks),
     matchFormatLabel(activity.matchFormat),
     // Run type and intensity are independent — a run shows both ("Long · Easy"), a match
     // shows format and intensity, and everything else just its intensity. Runs logged before

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { createInitialState, hydrate } from './lib/seed.js'
 import { loadState, safeStorage, attachPersistence } from './lib/persistence.js'
-import { validateBackup } from './lib/backup.js'
+import { validateBackup, validatePlan } from './lib/backup.js'
 import {
   nextTarget,
   targetFor,
@@ -75,7 +75,7 @@ function firstTimeEntry(exerciseId, state) {
     repsMax,
     sets,
     restSec: state.settings.defaultRestSec,
-    increment: incrementFor(null, ex && ex.equipment),
+    increment: incrementFor(null, ex),
     kind: 'first',
     reason: FIRST_REASON,
     performed: Array.from({ length: sets }, () => ({ reps: repsMin, weightKg: null, done: false })),
@@ -357,7 +357,7 @@ export function createStore(storage) {
 
     // Logs a set. Rest starts only when there is another set of THIS exercise still to do —
     // finishing the last one goes to the exercise summary instead, which is where the screen
-    // advances from. It no longer moves currentIndex itself; nextExercise does that.
+    // advances from. It never moves currentIndex itself; goToExercise does that.
     tickSet(exerciseIdx, setIdx) {
       set((s) => {
         if (!s.active) return {}
@@ -393,15 +393,7 @@ export function createStore(storage) {
       })
     },
 
-    nextExercise() {
-      set((s) => {
-        if (!s.active) return {}
-        const idx = Math.min(s.active.exercises.length - 1, s.active.currentIndex + 1)
-        return { active: { ...s.active, currentIndex: idx, restStartedAt: null, restDuration: null } }
-      })
-    },
-
-    // Both directions clear the rest state: rest belongs to the exercise you were on, and
+    // Every index setter clears the rest state: rest belongs to the exercise you were on, and
     // carrying it across would show the rest screen for a set you are no longer logging.
     prevExercise() {
       set((s) => {
@@ -447,7 +439,7 @@ export function createStore(storage) {
           repsMin: entry.repsMin,
           repsMax: entry.repsMax,
           prescribed: entry.sets,
-          increment: incrementFor(null, ex && ex.equipment),
+          increment: incrementFor(null, ex),
         }
         const target = targetFor(newId, rules, s.workouts)
         const fill = prefilledSets(entry.performed.length, target)
@@ -599,6 +591,17 @@ export function createStore(storage) {
         if (get().settings.keepAwake) acquireWakeLock()
       }
       return { ok: true }
+    },
+
+    // A new block's plan, without the round trip through a full backup — which replaced
+    // everything and so lost whatever was logged between the export and the import. Only
+    // the plan and the permanent swaps change: a swap is keyed on the old plan's slots and
+    // would silently redirect the new one. The block label still moves only on Continue.
+    importPlan(jsonString) {
+      const result = validatePlan(jsonString, get().customEx)
+      if (!result.ok) return result
+      set({ plan: result.plan, swaps: {} })
+      return { ok: true, plan: result.plan }
     },
 
     // Back to a fresh install. Releases the lock first in case a workout is in progress.

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   exerciseHistory,
   exerciseStats,
+  stalledAt,
   slotResult,
   buildWorkoutLog,
   finishWorkout,
@@ -12,6 +13,7 @@ import {
   isBlockComplete,
   sessionsDone,
   lastDoneByRotation,
+  nextUnfinished,
 } from './session.js'
 import { createInitialState } from '../lib/seed.js'
 
@@ -268,5 +270,56 @@ describe('exerciseHistory and exerciseStats', () => {
 
   it('returns null stats for an exercise with no history', () => {
     expect(exerciseStats([])).toBe(null)
+  })
+})
+
+describe('stalledAt', () => {
+  const h = (...weights) => weights.map((w) => ({ topWeight: w }))
+
+  it('needs four sessions before it says anything', () => {
+    expect(stalledAt(h(100, 100, 100))).toBe(null)
+  })
+
+  it('flags a lift flat across four sessions', () => {
+    expect(stalledAt(h(100, 100, 100, 100))).toBe(100)
+  })
+
+  it('flags an advance that deloaded straight back', () => {
+    // The leg press in block 1: each step a correct decision, the four together no gain.
+    expect(stalledAt(h(100, 110, 100, 100))).toBe(100)
+  })
+
+  it('stays quiet on a lift that is moving', () => {
+    expect(stalledAt(h(30, 30, 32.5, 32.5))).toBe(null)
+    expect(stalledAt(h(80, 100, 100, 100, 102.5))).toBe(null)
+  })
+
+  it('reads only the last four', () => {
+    expect(stalledAt(h(60, 80, 80, 80, 80))).toBe(80)
+  })
+
+  it('says nothing when a weight is missing', () => {
+    expect(stalledAt(h(null, 100, 100, 100))).toBe(null)
+  })
+})
+
+describe('nextUnfinished', () => {
+  const ex = (...done) => ({ performed: done.map((d) => ({ reps: 8, weightKg: 60, done: d })) })
+
+  it('skips finished exercises ahead and returns the next with a set left', () => {
+    expect(nextUnfinished([ex(true), ex(true), ex(false)], 0)).toBe(2)
+  })
+
+  it('wraps to the earlier exercises when the last in the list is done first', () => {
+    // Jumped to the last exercise from the overview and finished it with two untouched.
+    expect(nextUnfinished([ex(true), ex(false, false), ex(false), ex(true)], 3)).toBe(1)
+  })
+
+  it('counts a partly done exercise as unfinished', () => {
+    expect(nextUnfinished([ex(true, false), ex(true)], 1)).toBe(0)
+  })
+
+  it('returns -1 only when every set of every exercise is done', () => {
+    expect(nextUnfinished([ex(true, true), ex(true)], 1)).toBe(-1)
   })
 })

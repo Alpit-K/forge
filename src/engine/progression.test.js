@@ -59,14 +59,28 @@ function twoSlotRotation() {
 
 describe('incrementFor', () => {
   it('prefers an explicit incrementKg override', () => {
-    expect(incrementFor({ incrementKg: 5 }, 'barbell')).toBe(5)
+    expect(incrementFor({ incrementKg: 5 }, { equipment: 'barbell' })).toBe(5)
   })
   it('steps dumbbell work in 2 kg', () => {
-    expect(incrementFor({ incrementKg: null }, 'dumbbell')).toBe(2)
+    expect(incrementFor({ incrementKg: null }, { equipment: 'dumbbell' })).toBe(2)
   })
-  it('defaults to 2.5 kg for everything else', () => {
-    expect(incrementFor({ incrementKg: null }, 'barbell')).toBe(2.5)
-    expect(incrementFor({ incrementKg: null }, 'cable')).toBe(2.5)
+  it('steps a cable in 2.5 kg for a small muscle and 5 kg for a large one', () => {
+    expect(incrementFor(null, { equipment: 'cable', target: 'triceps' })).toBe(2.5)
+    expect(incrementFor(null, { equipment: 'cable', target: 'biceps' })).toBe(2.5)
+    expect(incrementFor(null, { equipment: 'cable', target: 'delts' })).toBe(2.5)
+    expect(incrementFor(null, { equipment: 'cable', target: 'abs' })).toBe(2.5)
+    expect(incrementFor(null, { equipment: 'cable', target: 'lats' })).toBe(5)
+    expect(incrementFor(null, { equipment: 'cable', target: 'upper back' })).toBe(5)
+    expect(incrementFor(null, { equipment: 'cable', target: 'pectorals' })).toBe(5)
+  })
+  it('steps a lever machine in 5 kg whatever it targets', () => {
+    expect(incrementFor(null, { equipment: 'leverage machine', target: 'biceps' })).toBe(5)
+  })
+  it('defaults to 2.5 kg for plate-loaded kit and an unknown exercise', () => {
+    expect(incrementFor({ incrementKg: null }, { equipment: 'barbell' })).toBe(2.5)
+    expect(incrementFor({ incrementKg: null }, { equipment: 'sled machine' })).toBe(2.5)
+    expect(incrementFor({ incrementKg: null }, { equipment: 'smith machine' })).toBe(2.5)
+    expect(incrementFor(null, null)).toBe(2.5)
   })
 })
 
@@ -175,6 +189,44 @@ describe('nextTarget', () => {
     expect(t.kind).toBe('deload')
     // 20 * 0.95 = 19 -> rounds to 20 -> subtract 2.5
     expect(t.weightKg).toBe(17.5)
+  })
+
+  // A weight off the increment's own grid — 2.5 kg on a 5 kg step — used to be rounded onto
+  // the grid AFTER the step was added, so 2.5 + 5 came out at 10 and 22.5 + 5 at 30.
+  it('advances by exactly one increment from a weight off its grid', () => {
+    const w = (kg) => [workout('0043', [set(12, kg), set(12, kg), set(12, kg)])]
+    const s = (kg, incrementKg) => ({
+      ...state({ workouts: w(kg) }),
+      plan: { ...seedPlan, rotation: [{ name: 's', exercises: [entry('0043', { incrementKg })] }] },
+    })
+    expect(nextTarget('0043', s(2.5, 5)).weightKg).toBe(7.5)
+    expect(nextTarget('0043', s(22.5, 5)).weightKg).toBe(27.5)
+    expect(nextTarget('0043', s(22.5, 2)).weightKg).toBe(24.5)
+    expect(nextTarget('0043', s(22.5, 5)).reason).toBe('Up 5 kg — you hit 3×12 last time')
+  })
+
+  it('takes a cable isolation lift up 2.5 kg, not onto the next 5 kg multiple', () => {
+    const top = (id, kg) => [workout(id, [set(15, kg), set(15, kg), set(15, kg)])]
+    const slot = (id) => ({ ...seedPlan, rotation: [{ name: 's', exercises: [entry(id, { repsMin: 12, repsMax: 15 })] }] })
+    const lateral = { ...state({ workouts: top('0178', 2.5) }), plan: slot('0178') }
+    const pushdown = { ...state({ workouts: top('0201', 22.5) }), plan: slot('0201') }
+    expect(nextTarget('0178', lateral).weightKg).toBe(5)
+    expect(nextTarget('0201', pushdown).weightKg).toBe(25)
+  })
+
+  it('deloads in whole increments from a weight off its grid', () => {
+    const missed = (kg) => [
+      workout('0043', [set(7, kg), set(7, kg), set(12, kg)]),
+      workout('0043', [set(7, kg), set(7, kg), set(12, kg)], 1),
+    ]
+    const s = (kg, incrementKg) => ({
+      ...state({ workouts: missed(kg) }),
+      plan: { ...seedPlan, rotation: [{ name: 's', exercises: [entry('0043', { incrementKg })] }] },
+    })
+    // 5% of 102.5 is 5.125, one 5 kg step
+    expect(nextTarget('0043', s(102.5, 5)).weightKg).toBe(97.5)
+    // 5% of 22.5 is under half a step, so it takes one whole step
+    expect(nextTarget('0043', s(22.5, 5)).weightKg).toBe(17.5)
   })
 
   it('correcting a historical set changes the computed target', () => {

@@ -28,6 +28,17 @@ describe('runHistory', () => {
     expect(only.paceSecPerKm).toBeNull()
   })
 
+  it('keeps a walk-break count of zero, which is a continuous run, apart from none recorded', () => {
+    const [none, continuous, three] = runHistory([
+      run('2026-08-01T09:00:00.000Z', 5, 30),
+      { ...run('2026-08-02T09:00:00.000Z', 5, 30), walkBreaks: 0 },
+      { ...run('2026-08-03T09:00:00.000Z', 5, 30), walkBreaks: 3 },
+    ])
+    expect(none.walkBreaks).toBeNull()
+    expect(continuous.walkBreaks).toBe(0)
+    expect(three.walkBreaks).toBe(3)
+  })
+
   it('ignores activities that are not runs', () => {
     expect(runHistory([{ id: 'c', type: 'cycle', at: '2026-08-01T09:00:00.000Z', minutes: 40, distanceKm: 20 }]))
       .toHaveLength(0)

@@ -8,6 +8,7 @@ import {
   setsCompleted,
   durationSeconds,
   sessionsDone,
+  isBlockComplete,
 } from '../engine/session.js'
 import { groupByDay } from '../engine/week.js'
 import { loggedSetsPerWeek } from '../engine/muscles.js'
@@ -32,6 +33,7 @@ import ProgressRing from '../components/ProgressRing.jsx'
 import ExerciseDetail from '../components/ExerciseDetail.jsx'
 import RunDetail from '../components/RunDetail.jsx'
 import ActivitySheet from '../components/ActivitySheet.jsx'
+import WorkoutTimeSheet from '../components/WorkoutTimeSheet.jsx'
 import Icon from '../components/Icon.jsx'
 import Settings from './Settings.jsx'
 import { exportBackup } from '../lib/backup.js'
@@ -312,7 +314,7 @@ function changeFromPrevious(history, finishedAt, topWeight) {
   )
 }
 
-function WorkoutDetail({ workout, onClose, onDelete, onOpenExercise }) {
+function WorkoutDetail({ workout, onClose, onDelete, onEditTimes, onOpenExercise }) {
   const customEx = useStore((s) => s.customEx)
   const workouts = useStore((s) => s.workouts)
   const setSet = (entryIdx, setIdx, patch) => useStore.getState().updateHistoricalSet(workout.id, entryIdx, setIdx, patch)
@@ -322,6 +324,9 @@ function WorkoutDetail({ workout, onClose, onDelete, onOpenExercise }) {
       <p className="detail-meta tnum">
         {fmtDateTime(workout.finishedAt)} · {workoutMinutes(workout)} · {workoutFacts(workout)}
       </p>
+      <button type="button" className="ex-open" onClick={onEditTimes}>
+        Edit date and time
+      </button>
       {workout.entries.map((entry, ei) => {
         const ex = getExercise(entry.exerciseId, customEx)
         const history = exerciseHistory(workouts, entry.exerciseId)
@@ -409,6 +414,8 @@ export default function History() {
   const [exerciseDetail, setExerciseDetail] = useState(null)
   const [trendOpen, setTrendOpen] = useState(false)
   const [filter, setFilter] = useState(null)
+  // 'new' for a past workout being entered, a workout's id for one being re-timed.
+  const [timeSheet, setTimeSheet] = useState(null)
 
   const rows = useMemo(() => {
     const items = mergeItems(workouts, activities).filter((item) => matchesFilter(item, filter))
@@ -490,6 +497,13 @@ export default function History() {
               </span>
               <span className="block-lead-caption">sessions done</span>
             </div>
+            {/* A session forgotten in the gym counts toward the block like any other, so
+                there is nowhere to put one once the block is full. */}
+            {!isBlockComplete(blockDone, sessionCount) && (
+              <Group>
+                <Row title="Log a past workout" chevron onClick={() => setTimeSheet('new')} />
+              </Group>
+            )}
             {/* One stream. A day heading, the items logged that day, and a block's summary
                 where the walk crosses out of it. Days with nothing in them are absent
                 rather than drawn as rest: this is a record of what happened, and padding it
@@ -540,7 +554,18 @@ export default function History() {
           workout={detail}
           onClose={() => setDetailId(null)}
           onDelete={() => setDeleteId(detail.id)}
+          onEditTimes={() => setTimeSheet(detail.id)}
           onOpenExercise={setExerciseDetail}
+        />
+      )}
+      {timeSheet && (
+        <WorkoutTimeSheet
+          workout={timeSheet === 'new' ? null : workouts.find((w) => w.id === timeSheet)}
+          onLogged={(id) => {
+            setTimeSheet(null)
+            setDetailId(id)
+          }}
+          onClose={() => setTimeSheet(null)}
         />
       )}
       {exerciseDetail && (

@@ -176,14 +176,6 @@ function paths(name) {
     /* Settings row glyphs. A settings list is the one screen in the app that is all words
        and no numbers, so the icon is what makes a row findable on the second visit — you
        remember where the speaker was, not the reading order of three switches. */
-    case 'timer':
-      return (
-        <>
-          <circle cx="12" cy="13.5" r="7.5" />
-          <path d="M12 9.5v4h3" />
-          <path d="M9.5 2.5h5M12 2.5v3.5" />
-        </>
-      )
     case 'sun':
       return (
         <>

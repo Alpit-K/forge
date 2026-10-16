@@ -11,22 +11,11 @@ import { lastDoneByRotation } from './session.js'
 
 export const ROLLING_DAYS = 7
 
-// Every rotation slot in the shipped plan contains a leg exercise — squat, Romanian
-// deadlift and leg press respectively. So "don't suggest a hard run the day after legs"
-// would, on a three-lifts-a-week schedule, leave exactly one eligible day in the whole week
-// and make the 80/20 unreachable. The guard therefore splits by what actually conflicts:
-//
-//   hard (intervals) — suppressed by a lift or a hard session today or yesterday
-//   long (steady)    — suppressed only by something already logged today
-//
-// Steady distance and intervals are not the same stress on legs that lifted yesterday, and
-// treating them as one is what made the original rule unusable.
-function guard(liftDays, hardDays) {
-  return {
-    allowHard: !(liftDays !== null && liftDays <= 1) && !(hardDays !== null && hardDays <= 1),
-    allowLong: !(hardDays !== null && hardDays === 0),
-  }
-}
+// The coach suggests easy or long cardio and never a hard session. Going hard is the user's
+// call, made in the session; the intensity tag is still read, but only ever to steer a
+// suggestion easier — a hard session today or yesterday turns a long day into an easy one.
+// Every rotation slot in the shipped plan contains a leg movement, so a lift yesterday does
+// not block cardio: steady effort is not the stress on lifted legs that intervals were.
 
 // Anything dated after `now` is ignored. A session in the future has not happened, and
 // counting it makes daysBetween negative — which reads as "today or yesterday" to every
@@ -104,9 +93,8 @@ function liftSuggestion(state, reason, now = new Date()) {
 }
 
 const CARDIO_COPY = {
-  easy: { title: 'Easy run', detail: 'Conversational pace — you can hold a sentence' },
-  hard: { title: 'Hard session', detail: 'Intervals or a tempo effort' },
-  long: { title: 'Long run', detail: 'Steady, and further than last week' },
+  easy: { title: 'Easy cardio', detail: 'Conversational effort — you can hold a sentence' },
+  long: { title: 'Long cardio', detail: 'Steady, and longer than last week' },
 }
 
 function cardioSuggestion(cardioKind, reason) {
@@ -118,7 +106,7 @@ function rest(reason, detail = 'Nothing due today') {
 }
 
 // Which cardio, when the shape has already said today is a cardio day.
-function chooseCardio(rolling, allowHard, liftDays, hardDays) {
+function chooseCardio(rolling, liftDays, hardDays) {
   if (hardDays !== null && hardDays <= 1) {
     return cardioSuggestion('easy', 'Hard session yesterday — keep this one easy.')
   }
@@ -130,9 +118,6 @@ function chooseCardio(rolling, allowHard, liftDays, hardDays) {
   if (rolling.tagged === 0) {
     return cardioSuggestion('easy', 'Nothing tagged easy or hard yet — starting you easy.')
   }
-  if (allowHard && rolling.hard === 0 && rolling.cardio >= 2) {
-    return cardioSuggestion('hard', `No hard session in the last ${ROLLING_DAYS} days.`)
-  }
   if (rolling.easyPct !== null && rolling.easyPct < 70) {
     // Names its own window, because the Today readout beside it shows week-to-date and the
     // two disagree by design. Without the window this reads as a contradiction.
@@ -140,9 +125,6 @@ function chooseCardio(rolling, allowHard, liftDays, hardDays) {
       'easy',
       `${rolling.hard} of your last ${rolling.tagged} tagged sessions were hard. Easy today.`,
     )
-  }
-  if (!allowHard && rolling.hard === 0) {
-    return cardioSuggestion('easy', 'Lifted yesterday — easy today rather than intervals.')
   }
   return cardioSuggestion('easy', 'Building the base. Easy today.')
 }
@@ -159,7 +141,6 @@ export function recommend(state, now = new Date()) {
   const today = summarise(workouts, activities, startOfDay(now), addDays(startOfDay(now), 1))
   const liftDays = daysBetween(lastAt(workouts, 'finishedAt', now), now)
   const hardDays = daysBetween(lastAt(activities, 'at', now, (a) => a.intensity === 'hard'), now)
-  const { allowHard, allowLong } = guard(liftDays, hardDays)
 
   // Already trained today. Nothing else is offered, and the detail says what you did rather
   // than what is missing — the card is a suggestion for an empty day, not a prompt for a
@@ -203,7 +184,7 @@ export function recommend(state, now = new Date()) {
       if (liftsSpare) {
         if (cardioShort > 0 && !cardioSettled) {
           return {
-            ...chooseCardio(rolling, allowHard, liftDays, hardDays),
+            ...chooseCardio(rolling, liftDays, hardDays),
             reason: `${liftsShort} ${liftsShort === 1 ? 'lift' : 'lifts'} left and ${days(remaining.lift)} still shaped for ${liftsShort === 1 ? 'it' : 'them'} — cardio today instead.`,
           }
         }
@@ -215,7 +196,7 @@ export function recommend(state, now = new Date()) {
       // Target already met and cardio is not — the shape is a preference, and following it
       // past the point it helps is how a plan quietly stops matching the goal.
       if (liftsShort === 0 && cardioShort > 0) {
-        return chooseCardio(rolling, allowHard, liftDays, hardDays)
+        return chooseCardio(rolling, liftDays, hardDays)
       }
       return liftSuggestion(state, 'Your lifting day, and this is the slot left longest.', now)
     }
@@ -237,15 +218,15 @@ export function recommend(state, now = new Date()) {
       if (cardioShort === 0 && liftsShort > 0) {
         return liftSuggestion(state, 'Cardio target already met this week — lift instead.', now)
       }
-      return chooseCardio(rolling, allowHard, liftDays, hardDays)
+      return chooseCardio(rolling, liftDays, hardDays)
     }
 
     if (planned === 'long') {
-      if (!allowLong) return cardioSuggestion('easy', 'Hard session today already — keep it easy.')
+      if (hardDays === 0) return cardioSuggestion('easy', 'Hard session today already — keep it easy.')
       if (hardDays !== null && hardDays <= 1) {
         return cardioSuggestion('easy', 'Hard session yesterday — easy rather than long today.')
       }
-      return cardioSuggestion('long', 'Your long run. This is the one that builds to 10k.')
+      return cardioSuggestion('long', 'Your long session of the week.')
     }
 
     // A rest day in the shape. It stays rest unless the week can no longer be finished by
@@ -263,7 +244,7 @@ export function recommend(state, now = new Date()) {
     }
     if (cardioShort > daysLeft) {
       return {
-        ...chooseCardio(rolling, allowHard, liftDays, hardDays),
+        ...chooseCardio(rolling, liftDays, hardDays),
         reason: `Your rest day, but ${cardioShort} cardio left and ${daysToGo} to do them.`,
       }
     }

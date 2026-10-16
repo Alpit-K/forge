@@ -14,6 +14,8 @@ import {
   sessionsDone,
   lastDoneByRotation,
   nextUnfinished,
+  byFinish,
+  blockWindow,
 } from './session.js'
 import { createInitialState } from '../lib/seed.js'
 
@@ -321,5 +323,48 @@ describe('nextUnfinished', () => {
 
   it('returns -1 only when every set of every exercise is done', () => {
     expect(nextUnfinished([ex(true, true), ex(true)], 1)).toBe(-1)
+  })
+})
+
+// Progression and exerciseHistory read workouts in stored order and take the last as the
+// latest, so a log written after the fact has to be slotted in by date, not appended.
+describe('byFinish', () => {
+  it('orders logs by finishedAt without touching the input', () => {
+    const logs = [
+      { id: 'b', finishedAt: '2026-09-10T07:00:00.000Z' },
+      { id: 'a', finishedAt: '2026-09-01T07:00:00.000Z' },
+      { id: 'c', finishedAt: '2026-09-12T07:00:00.000Z' },
+    ]
+    expect(byFinish(logs).map((w) => w.id)).toEqual(['a', 'b', 'c'])
+    expect(logs.map((w) => w.id)).toEqual(['b', 'a', 'c'])
+  })
+})
+
+describe('blockWindow', () => {
+  const logs = [
+    { id: 'a', blockIndex: 0, startedAt: '2026-08-01T06:00:00.000Z', finishedAt: '2026-08-01T07:00:00.000Z' },
+    { id: 'b', blockIndex: 0, startedAt: '2026-08-20T06:00:00.000Z', finishedAt: '2026-08-20T07:00:00.000Z' },
+    { id: 'c', blockIndex: 1, startedAt: '2026-09-01T06:00:00.000Z', finishedAt: '2026-09-01T07:00:00.000Z' },
+    { id: 'd', blockIndex: 2, startedAt: '2026-09-25T06:00:00.000Z', finishedAt: '2026-09-25T07:00:00.000Z' },
+  ]
+
+  it('sits after every earlier block and before every later one', () => {
+    expect(blockWindow(logs, 1)).toEqual({
+      after: '2026-08-20T07:00:00.000Z',
+      before: '2026-09-25T06:00:00.000Z',
+    })
+  })
+
+  it('is open at both ends with nothing either side', () => {
+    expect(blockWindow(logs, 0)).toEqual({ after: null, before: '2026-09-01T06:00:00.000Z' })
+    expect(blockWindow(logs, 2)).toEqual({ after: '2026-09-01T07:00:00.000Z', before: null })
+  })
+
+  it('leaves out the log being edited', () => {
+    expect(blockWindow(logs, 1, 'c')).toEqual({
+      after: '2026-08-20T07:00:00.000Z',
+      before: '2026-09-25T06:00:00.000Z',
+    })
+    expect(blockWindow(logs, 2, 'd').before).toBe(null)
   })
 })

@@ -41,7 +41,6 @@ export const seedPlan = {
 }
 
 export const DEFAULT_SETTINGS = {
-  defaultRestSec: 120,
   keepAwake: true,
   sound: true,
   weeklyLifts: 3,

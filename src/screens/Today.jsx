@@ -219,18 +219,9 @@ function IdleView() {
       : null
   const mix = activityMix(week.cardioLogs)
 
-  // The coach's cardioKind maps onto a run type AND an intensity, so "Log it" on a suggested
-  // session opens with both already chosen. A long run defaults to easy — steady base rather
-  // than intervals — and the user can flip either chip in the sheet.
-  const RUN_TYPE_FOR = {
-    easy: { runType: 'short', intensity: 'easy' },
-    long: { runType: 'long', intensity: 'easy' },
-    hard: { runType: 'intervals', intensity: 'hard' },
-  }
-  const logSuggested = () => {
-    const preset = RUN_TYPE_FOR[rec.cardioKind] || RUN_TYPE_FOR.easy
-    setActivitySheet({ type: 'run', runType: preset.runType, intensity: preset.intensity })
-  }
+  // The coach only ever suggests easy cardio, so "Log it" opens with Easy chosen and nothing
+  // else — which activity it was is the user's to say, and a run type would be a guess.
+  const logSuggested = () => setActivitySheet({ intensity: 'easy' })
 
   return (
     <>
@@ -770,7 +761,7 @@ function WorkoutFlow({ onFinish }) {
 
   if (exerciseDone) {
     const allDone = nextIdx === -1
-    // What this exercise will ask for next time, as if the session ended now — the same §8
+    // What this exercise will ask for next time, as if the session ended now — the same
     // decision through targetFor, recomputed per render and never stored. The frozen
     // `current.reason` explains the target you were given, which after the last set is
     // the past: it said "first time" beneath 3×12 on a first session.

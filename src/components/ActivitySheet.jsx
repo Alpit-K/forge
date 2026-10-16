@@ -11,32 +11,7 @@ import {
   takesMatchFormat,
 } from '../lib/activities.js'
 import { fmtPace } from '../lib/format.js'
-
-// `new Date().toISOString().slice(0, 10)` is the UTC day, which is the previous one for
-// anything logged late on a British Summer Time evening. Read and write the local day.
-function toDateInput(iso) {
-  const d = new Date(iso)
-  const pad = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
-
-// Keeps the original time of day. All three components are set in one call so a 31st
-// never rolls forward through a short month on the way.
-function withDate(iso, value) {
-  const [y, m, d] = value.split('-').map(Number)
-  const next = new Date(iso)
-  next.setFullYear(y, m - 1, d)
-  return next.toISOString()
-}
-
-// Today is the latest date there is: a session logged ahead of now is read as one that has
-// already happened. `max` on the input is a hint and iOS offers the day regardless, so this
-// is where it is actually enforced — the field snaps back rather than accepting it. Both
-// values are `yyyy-mm-dd`, where a string comparison is a date comparison.
-function notAfterToday(value, now = new Date()) {
-  const today = toDateInput(now.toISOString())
-  return value > today ? today : value
-}
+import { toDateInput, withDate, notAfterToday } from '../lib/dateInput.js'
 
 // Add and edit are the same form; `activity` is null when adding. Fields are held locally
 // and committed on Save — the commit-on-blur rule exists because a set's weight propagates

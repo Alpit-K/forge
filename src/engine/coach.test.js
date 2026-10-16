@@ -128,11 +128,10 @@ describe('80/20 reads the rolling window, not week-to-date', () => {
     expect(r.reason).toMatch(/2 of your last 3 tagged sessions were hard/)
   })
 
-  it('offers a hard session when the last seven days hold none', () => {
+  it('never suggests a hard session, even when the last seven days hold none', () => {
     const activities = [run(iso(2026, 8, 27), 'easy'), run(iso(2026, 8, 29), 'easy')]
     const r = recommend(state({ activities }), local(...TUE))
-    expect(r.cardioKind).toBe('hard')
-    expect(r.reason).toContain('last 7 days')
+    expect(r.cardioKind).toBe('easy')
   })
 
   it('defaults to easy and says so when nothing is tagged', () => {

@@ -17,11 +17,17 @@ import {
   setsCompleted,
   durationSeconds,
   continueBlock,
+  advanceProgress,
+  byFinish,
 } from './engine/session.js'
 import { acquireWakeLock, releaseWakeLock } from './lib/wakeLock.js'
 import { ensureAudioContext } from './lib/audio.js'
 
 export const STATE_KEY = 'forge_state_v1'
+
+// The rest an exercise starts with when it joins a plan session or a workout without a
+// plan slot. Every plan slot carries its own `restSec`, which is what the timer reads.
+const NEW_EXERCISE_REST_SEC = 90
 
 function newId() {
   if (globalThis.crypto && crypto.randomUUID) return crypto.randomUUID()
@@ -59,19 +65,29 @@ function buildExerciseEntry(exerciseId, template, target) {
   }
 }
 
+// A rotation session's entries, each resolved through its permanent swap and prefilled from
+// the target `state`'s history gives it. startWorkout passes the whole state; logPastWorkout
+// passes only the history before the session's date.
+function plannedEntries(state, rotationIndex) {
+  return state.plan.rotation[rotationIndex].exercises.map((t) =>
+    buildExerciseEntry(state.swaps[t.exerciseId] || t.exerciseId, t, nextTarget(t.exerciseId, state, rotationIndex)),
+  )
+}
+
 // An exercise with no plan slot takes the default prescription, and its target comes from
-// its own history through the same §8 decision a swap uses — the add sheet shows that
+// its own history through the same decision a swap uses — the add sheet shows that
 // history, so landing on "first time" beneath it contradicted the screen. An exercise with
 // nothing logged still comes back first-time, which is what targetFor returns.
+const UNPLANNED = { sets: 3, repsMin: 8, repsMax: 12, restSec: NEW_EXERCISE_REST_SEC }
+
 function unplannedEntry(exerciseId, state) {
-  const template = { sets: 3, repsMin: 8, repsMax: 12, restSec: state.settings.defaultRestSec }
   const rules = {
-    repsMin: template.repsMin,
-    repsMax: template.repsMax,
-    prescribed: template.sets,
+    repsMin: UNPLANNED.repsMin,
+    repsMax: UNPLANNED.repsMax,
+    prescribed: UNPLANNED.sets,
     increment: incrementFor(null, getExercise(exerciseId, state.customEx)),
   }
-  return buildExerciseEntry(exerciseId, template, targetFor(exerciseId, rules, state.workouts))
+  return buildExerciseEntry(exerciseId, UNPLANNED, targetFor(exerciseId, rules, state.workouts))
 }
 
 export function createStore(storage) {
@@ -151,7 +167,7 @@ export function createStore(storage) {
                       sets: 3,
                       repsMin: 8,
                       repsMax: 12,
-                      restSec: s.settings.defaultRestSec,
+                      restSec: NEW_EXERCISE_REST_SEC,
                       incrementKg: null,
                     },
                   ],
@@ -217,10 +233,6 @@ export function createStore(storage) {
       if (s.active) return
       ensureAudioContext()
       if (s.settings.keepAwake) acquireWakeLock()
-      const template = s.plan.rotation[rotationIndex]
-      const exercises = template.exercises.map((t) =>
-        buildExerciseEntry(s.swaps[t.exerciseId] || t.exerciseId, t, nextTarget(t.exerciseId, s, rotationIndex)),
-      )
       set({
         active: {
           id: newId(),
@@ -228,11 +240,11 @@ export function createStore(storage) {
           blockIndex: s.progress.blockIndex,
           sessionIndex: s.progress.sessionIndex,
           rotationIndex,
-          templateName: template.name,
+          templateName: s.plan.rotation[rotationIndex].name,
           currentIndex: 0,
           restStartedAt: null,
           restDuration: null,
-          exercises,
+          exercises: plannedEntries(s, rotationIndex),
         },
       })
     },
@@ -549,6 +561,36 @@ export function createStore(storage) {
               }
             : w,
         ),
+      }))
+    },
+
+    // A session forgotten in the gym, entered afterwards. It is a finished session like any
+    // other — it counts toward the block, advances sessionIndex and feeds progression — so it
+    // is prefilled with what the scheme would have prescribed on the day, from the history
+    // before it, and slotted in by date. Sets start unticked: an entry closed without ticking
+    // records nothing as performed. Returns the new log's id so History can open it.
+    logPastWorkout(rotationIndex, startedAt, finishedAt) {
+      const s = get()
+      const before = { ...s, workouts: s.workouts.filter((w) => w.finishedAt < startedAt) }
+      const log = buildWorkoutLog(
+        {
+          id: newId(),
+          startedAt,
+          blockIndex: s.progress.blockIndex,
+          sessionIndex: s.progress.sessionIndex,
+          rotationIndex,
+          templateName: s.plan.rotation[rotationIndex].name,
+          exercises: plannedEntries(before, rotationIndex),
+        },
+        finishedAt,
+      )
+      set({ workouts: byFinish([...s.workouts, log]), progress: advanceProgress(s.progress) })
+      return log.id
+    },
+
+    updateWorkoutTimes(workoutId, startedAt, finishedAt) {
+      set((s) => ({
+        workouts: byFinish(s.workouts.map((w) => (w.id === workoutId ? { ...w, startedAt, finishedAt } : w))),
       }))
     },
 

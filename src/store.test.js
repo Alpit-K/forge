@@ -380,7 +380,7 @@ describe('addExerciseToActive', () => {
     expect(ex.sets).toBe(3)
     expect(ex.repsMin).toBe(8)
     expect(ex.repsMax).toBe(12)
-    expect(ex.restSec).toBe(120)
+    expect(ex.restSec).toBe(90)
     expect(ex.performed.map((s) => s.weightKg)).toEqual([null, null, null])
   })
 
@@ -430,7 +430,7 @@ describe('addExerciseToActive', () => {
     expect(ex.kind).toBe('advance')
     expect(ex.sets).toBe(3)
     expect(ex.repsMin).toBe(8)
-    expect(ex.restSec).toBe(120)
+    expect(ex.restSec).toBe(90)
     expect(ex.performed.map((s) => s.weightKg)).toEqual([17.5, 17.5, 17.5])
   })
 })
@@ -496,5 +496,84 @@ describe('custom workout', () => {
     // The set feeds the next target: one done set at 60 is not an advance, so it holds at
     // 60 — but the weight now comes from history rather than from nothing.
     expect(nextTarget('0043', useStore.getState(), 0).weightKg).toBe(60)
+  })
+})
+
+function logAt(id, day, weightKg) {
+  return {
+    id,
+    startedAt: `2026-09-${day}T06:00:00.000Z`,
+    finishedAt: `2026-09-${day}T06:40:00.000Z`,
+    blockIndex: 0,
+    sessionIndex: 0,
+    rotationIndex: 0,
+    templateName: 'Squat-led',
+    entries: [
+      {
+        exerciseId: '0043',
+        swappedFrom: null,
+        sets: [
+          { reps: 12, weightKg, done: true },
+          { reps: 12, weightKg, done: true },
+          { reps: 12, weightKg, done: true },
+        ],
+      },
+    ],
+  }
+}
+
+// A session forgotten in the gym, entered afterwards. It is a session like any other — it
+// counts toward the block and feeds progression — so where it lands in the list matters.
+describe('logPastWorkout', () => {
+  function storeWith(workouts) {
+    const storage = { getItem: () => null, setItem: () => {}, removeItem: () => {} }
+    const useStore = createStore(storage)
+    useStore.setState({ workouts, progress: { blockIndex: 0, sessionIndex: workouts.length } })
+    return useStore
+  }
+
+  it('slots the log in by date, unticked, and advances the session counter', () => {
+    const useStore = storeWith([logAt('w1', '01', 60), logAt('w2', '10', 62.5)])
+    const id = useStore.getState().logPastWorkout(0, '2026-09-05T06:00:00.000Z', '2026-09-05T07:00:00.000Z')
+
+    const { workouts, progress } = useStore.getState()
+    expect(workouts.map((w) => w.id)).toEqual(['w1', id, 'w2'])
+    const log = workouts[1]
+    expect(log.blockIndex).toBe(0)
+    expect(log.rotationIndex).toBe(0)
+    expect(log.templateName).toBe(useStore.getState().plan.rotation[0].name)
+    expect(log.entries.every((e) => e.sets.every((s) => s.done === false))).toBe(true)
+    expect(progress.sessionIndex).toBe(3)
+  })
+
+  it('prefills from the sessions before its date, not from everything since', () => {
+    const useStore = storeWith([logAt('w1', '01', 60), logAt('w2', '10', 62.5)])
+    const id = useStore.getState().logPastWorkout(0, '2026-09-05T06:00:00.000Z', '2026-09-05T07:00:00.000Z')
+
+    const log = useStore.getState().workouts.find((w) => w.id === id)
+    const squat = log.entries.find((e) => e.exerciseId === '0043')
+    // 3×12 at 60 on the 1st advances to 62.5. Reading the 10th as well would say 65.
+    expect(squat.sets.map((s) => s.weightKg)).toEqual([62.5, 62.5, 62.5])
+  })
+
+  it('does not become the latest session for progression', () => {
+    const useStore = storeWith([logAt('w1', '01', 60), logAt('w2', '10', 62.5)])
+    useStore.getState().logPastWorkout(0, '2026-09-05T06:00:00.000Z', '2026-09-05T07:00:00.000Z')
+    // Unticked, so it is not history at all — the next target still comes off the 10th.
+    expect(nextTarget('0043', useStore.getState(), 0).weightKg).toBe(65)
+  })
+})
+
+describe('updateWorkoutTimes', () => {
+  it('moves a log and keeps the list in date order', () => {
+    const storage = { getItem: () => null, setItem: () => {}, removeItem: () => {} }
+    const useStore = createStore(storage)
+    useStore.setState({ workouts: [logAt('w1', '01', 60), logAt('w2', '10', 62.5)] })
+    useStore.getState().updateWorkoutTimes('w1', '2026-09-12T06:00:00.000Z', '2026-09-12T07:15:00.000Z')
+
+    const { workouts } = useStore.getState()
+    expect(workouts.map((w) => w.id)).toEqual(['w2', 'w1'])
+    expect(workouts[1].startedAt).toBe('2026-09-12T06:00:00.000Z')
+    expect(workouts[1].finishedAt).toBe('2026-09-12T07:15:00.000Z')
   })
 })

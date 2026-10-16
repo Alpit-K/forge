@@ -2,7 +2,6 @@ import { useRef, useState } from 'react'
 import { useStore } from '../store.js'
 import Sheet, { ActionSheet } from '../components/Sheet.jsx'
 import Icon from '../components/Icon.jsx'
-import Selector from '../components/Selector.jsx'
 import { Group, Row, RowIcon, Section } from '../components/List.jsx'
 import { exportBackup } from '../lib/backup.js'
 import { MEDIA_ENABLED } from '../lib/exercises.js'
@@ -144,18 +143,6 @@ export default function Settings({ onClose }) {
           into groups you can navigate by. */}
       <Section>Workout experience</Section>
       <Group>
-        <Row
-          title="Default rest"
-          thumb={<RowIcon name="timer" />}
-          value={
-            <Selector
-              label="Default rest"
-              value={settings.defaultRestSec}
-              options={[30, 45, 60, 90, 120, 150, 180, 240].map((n) => ({ value: n, label: `${n}s` }))}
-              onChange={(v) => setSetting('defaultRestSec', Number(v))}
-            />
-          }
-        />
         <Row
           title="Keep screen awake"
           thumb={<RowIcon name="sun" />}

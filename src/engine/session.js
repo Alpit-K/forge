@@ -60,6 +60,30 @@ export function sessionsDone(workouts, blockIndex) {
   return workouts.filter((w) => w.blockIndex === blockIndex).length
 }
 
+// The workouts list is kept in finish order, and that is load-bearing: progression and
+// exerciseHistory walk it as stored and read the last entry as the latest session. Finishing
+// appends in order by construction; a log written after the fact, or one whose date is
+// edited, has to be put back in its place through this.
+export function byFinish(workouts) {
+  return [...workouts].sort((a, b) => (a.finishedAt < b.finishedAt ? -1 : a.finishedAt > b.finishedAt ? 1 : 0))
+}
+
+// Where a log of `blockIndex` may sit in time: after the last log of every earlier block and
+// before the first of every later one. A block's history is the logs stamped with it, and
+// History draws a block's summary where the timeline crosses out of it — a log dated into a
+// neighbouring block's span would sit inside that block's history while counting toward its
+// own. `excludeId` leaves out the log being moved. Either end is null when nothing bounds it.
+export function blockWindow(workouts, blockIndex, excludeId = null) {
+  let after = null
+  let before = null
+  for (const w of workouts) {
+    if (w.id === excludeId) continue
+    if (w.blockIndex < blockIndex && (after == null || w.finishedAt > after)) after = w.finishedAt
+    if (w.blockIndex > blockIndex && (before == null || w.startedAt < before)) before = w.startedAt
+  }
+  return { after, before }
+}
+
 export function isBlockComplete(done, sessionCount) {
   return done >= sessionCount
 }

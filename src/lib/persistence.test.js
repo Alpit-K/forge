@@ -74,14 +74,13 @@ describe('persistence', () => {
 describe('settings hydration', () => {
   it('fills in a setting key the stored state predates', () => {
     const stale = createInitialState()
-    stale.settings = { defaultRestSec: 90, keepAwake: false, sound: true }
+    stale.settings = { keepAwake: false, sound: true }
     const storage = memoryStorage({ [STATE_KEY]: JSON.stringify(stale) })
 
     const store = createStore(storage)
     const settings = store.getState().settings
 
     // The user's own choices survive.
-    expect(settings.defaultRestSec).toBe(90)
     expect(settings.keepAwake).toBe(false)
     // The keys they have never seen arrive at their defaults rather than undefined.
     expect(settings.weeklyLifts).toBe(3)
@@ -92,11 +91,11 @@ describe('settings hydration', () => {
 
   it('applies the same merge to an imported backup', () => {
     const file = createInitialState()
-    file.settings = { defaultRestSec: 45, keepAwake: true, sound: false }
+    file.settings = { keepAwake: true, sound: false }
     const store = createStore(memoryStorage())
 
     expect(store.getState().importBackup(JSON.stringify(file)).ok).toBe(true)
-    expect(store.getState().settings.defaultRestSec).toBe(45)
+    expect(store.getState().settings.sound).toBe(false)
     expect(store.getState().settings.weeklyCardio).toBe(3)
   })
 

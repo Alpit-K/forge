@@ -625,7 +625,8 @@ button.row:active {
   margin: -11px 0;
 }
 
-.row-field[type='date'] {
+.row-field[type='date'],
+.row-field[type='time'] {
   width: auto;
 }
 
@@ -641,17 +642,19 @@ button.row:active {
   margin: 0;
 }
 
-/* A date input is not a text input in iOS Safari. It carries its own intrinsic width, which
+/* A date or time input is not a text input in iOS Safari. It carries its own intrinsic width, which
    is why the rule above hands it `width: auto` rather than fighting it, and it CENTRES its
    value while every other row field is right-aligned — so the date would sit off the column
    every other value lines up on. Strip the native appearance and pin the value right. */
-.row-field[type='date'] {
+.row-field[type='date'],
+.row-field[type='time'] {
   -webkit-appearance: none;
   appearance: none;
   min-width: 0;
 }
 
-.row-field[type='date']::-webkit-date-and-time-value {
+.row-field[type='date']::-webkit-date-and-time-value,
+.row-field[type='time']::-webkit-date-and-time-value {
   text-align: right;
   margin: 0;
 }

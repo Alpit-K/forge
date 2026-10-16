@@ -6,7 +6,6 @@ import {
   nextTarget,
   targetFor,
   incrementFor,
-  FIRST_REASON,
   findSlotFor,
   findTemplateEntry,
 } from './engine/progression.js'
@@ -60,26 +59,19 @@ function buildExerciseEntry(exerciseId, template, target) {
   }
 }
 
-// The first-time fallback for an exercise with no plan slot: nothing to prescribe, nothing
-// to prefill — the user types the weight on the first set.
-function firstTimeEntry(exerciseId, state) {
-  const ex = getExercise(exerciseId, state.customEx)
-  const repsMin = 8
-  const repsMax = 12
-  const sets = 3
-  return {
-    exerciseId,
-    swappedFrom: null,
-    lastSets: [],
-    repsMin,
-    repsMax,
-    sets,
-    restSec: state.settings.defaultRestSec,
-    increment: incrementFor(null, ex),
-    kind: 'first',
-    reason: FIRST_REASON,
-    performed: Array.from({ length: sets }, () => ({ reps: repsMin, weightKg: null, done: false })),
+// An exercise with no plan slot takes the default prescription, and its target comes from
+// its own history through the same §8 decision a swap uses — the add sheet shows that
+// history, so landing on "first time" beneath it contradicted the screen. An exercise with
+// nothing logged still comes back first-time, which is what targetFor returns.
+function unplannedEntry(exerciseId, state) {
+  const template = { sets: 3, repsMin: 8, repsMax: 12, restSec: state.settings.defaultRestSec }
+  const rules = {
+    repsMin: template.repsMin,
+    repsMax: template.repsMax,
+    prescribed: template.sets,
+    increment: incrementFor(null, getExercise(exerciseId, state.customEx)),
   }
+  return buildExerciseEntry(exerciseId, template, targetFor(exerciseId, rules, state.workouts))
 }
 
 export function createStore(storage) {
@@ -248,7 +240,8 @@ export function createStore(storage) {
     // A self-chosen session: start empty, add exercises, finish. A full member of the program —
     // finishing advances sessionIndex and the sets feed progression — but with no rotation
     // slot, so rotationIndex is null and the log carries the freeform flag for
-    // lastDoneByRotation to skip.
+    // lastDoneByRotation to skip. It opens `building`: the overview stays on screen while
+    // exercises are added, and beginFreeWorkout starts the logger.
     startFreeWorkout() {
       const s = get()
       if (s.active) return
@@ -262,12 +255,23 @@ export function createStore(storage) {
           sessionIndex: s.progress.sessionIndex,
           rotationIndex: null,
           freeform: true,
+          building: true,
           templateName: 'Custom workout',
           currentIndex: 0,
           restStartedAt: null,
           restDuration: null,
           exercises: [],
         },
+      })
+    },
+
+    // The clock restarts here, so time spent choosing exercises is not workout duration.
+    beginFreeWorkout() {
+      set((s) => {
+        if (!s.active || !s.active.building || s.active.exercises.length === 0) return {}
+        const active = { ...s.active, startedAt: new Date().toISOString(), currentIndex: 0 }
+        delete active.building
+        return { active }
       })
     },
 
@@ -468,7 +472,8 @@ export function createStore(storage) {
     },
 
     // Mid-workout add, session-only: touches active, never the plan. A planned exercise keeps
-    // its prescription and current target (prefill included); an unplanned one is first-time.
+    // its prescription and current target (prefill included); an unplanned one takes the
+    // default prescription and a target from its own history.
     // findSlotFor resolves the permanent swap, and where the same exercise is slotted twice it
     // takes the first slot — the same "first slot wins" assumption ExerciseDetail makes.
     addExerciseToActive(exerciseId) {
@@ -483,16 +488,17 @@ export function createStore(storage) {
             findTemplateEntry(s.plan, slot.slotId, slot.rotationIndex),
             nextTarget(slot.slotId, s, slot.rotationIndex),
           )
-        : firstTimeEntry(exerciseId, s)
+        : unplannedEntry(exerciseId, s)
       set((st) => ({ active: { ...st.active, exercises: [...st.active.exercises, entry] } }))
     },
 
-    // Mid-workout remove, session-only. Refuses the last remaining exercise and any exercise
-    // with a logged set, so no completed work vanishes on a mis-tap.
+    // Mid-workout remove, session-only. Refuses the last remaining exercise — except while a
+    // custom workout is still being built, where empty is just the overview — and any
+    // exercise with a logged set, so no completed work vanishes on a mis-tap.
     removeExerciseFromActive(exerciseIdx) {
       set((s) => {
         if (!s.active) return {}
-        if (s.active.exercises.length <= 1) return {}
+        if (s.active.exercises.length <= 1 && !s.active.building) return {}
         const ex = s.active.exercises[exerciseIdx]
         if (!ex || ex.performed.some((p) => p.done)) return {}
         const exercises = s.active.exercises.filter((_, i) => i !== exerciseIdx)

@@ -2128,6 +2128,13 @@ button.row:active,
   margin-bottom: var(--sp-5);
 }
 
+.progression-next {
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--label);
+}
+
 .progression-reason {
   margin: 0;
   font-size: var(--fs-meta);

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { allExercises, exerciseName, swapSuggestions } from '../lib/exercises.js'
-import { matchesQuery } from '../lib/search.js'
+import { matchesQuery, queryRank } from '../lib/search.js'
 import { Thumb } from './ExerciseImage.jsx'
 import Icon from './Icon.jsx'
 import ExerciseDetail from './ExerciseDetail.jsx'
@@ -76,12 +76,18 @@ export default function ExerciseBrowser({ onSelect, selectLabel, suggestFor, exc
 
   const all = useMemo(() => allExercises(customEx), [customEx])
 
+  // Best match first, alphabetical within each rank — the sort is stable.
   const byBodyAndSearch = useMemo(() => {
-    return all.filter((e) => {
+    const matched = all.filter((e) => {
       if (bodyPart && e.bodyPart !== bodyPart) return false
       if (!matchesQuery(e, search)) return false
       return true
     })
+    if (!search.trim()) return matched
+    return matched
+      .map((e) => ({ e, rank: queryRank(e, search) }))
+      .sort((a, b) => a.rank - b.rank)
+      .map(({ e }) => e)
   }, [all, bodyPart, search])
 
   const equipmentOptions = useMemo(() => frequency(byBodyAndSearch.map((e) => e.equipment)), [byBodyAndSearch])

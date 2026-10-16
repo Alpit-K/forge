@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { matchesQuery, searchableText } from './search.js'
+import { matchesQuery, queryRank, searchableText } from './search.js'
 
 function ex(overrides = {}) {
   return {
@@ -47,6 +47,17 @@ describe('matchesQuery', () => {
 
   it('ignores null and missing fields', () => {
     expect(matchesQuery({ name: 'Plank', equipment: null, target: null, bodyPart: 'waist', secondary: [] }, 'plank')).toBe(true)
+  })
+})
+
+describe('queryRank', () => {
+  it('ranks a name match above a main-muscle match above a secondary-muscle match', () => {
+    const shoulderPress = ex({ name: 'lever shoulder press', target: 'delts', bodyPart: 'shoulders', secondary: ['triceps'] })
+    const militaryPress = ex({ name: 'lever military press', target: 'delts', bodyPart: 'shoulders', secondary: ['triceps'] })
+    const benchPress = ex({ name: 'barbell bench press', target: 'pectorals', bodyPart: 'chest', secondary: ['shoulders'] })
+    expect(queryRank(shoulderPress, 'shoulder press')).toBe(0)
+    expect(queryRank(militaryPress, 'shoulder press')).toBe(1)
+    expect(queryRank(benchPress, 'shoulder press')).toBe(2)
   })
 })
 

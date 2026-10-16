@@ -383,6 +383,56 @@ describe('addExerciseToActive', () => {
     expect(ex.restSec).toBe(120)
     expect(ex.performed.map((s) => s.weightKg)).toEqual([null, null, null])
   })
+
+  it('takes the target from history for an exercise not in the plan', () => {
+    const useStore = storeWithActive({
+      exerciseId: '0739',
+      swappedFrom: null,
+      lastSets: [],
+      repsMin: 10,
+      repsMax: 15,
+      sets: 3,
+      restSec: 120,
+      increment: 2.5,
+      kind: 'first',
+      reason: FIRST_REASON,
+      performed: [{ reps: 10, weightKg: null, done: false }],
+    })
+    useStore.setState({
+      workouts: [
+        {
+          id: 'w1',
+          startedAt: '2026-10-05T06:00:00.000Z',
+          finishedAt: '2026-10-05T06:40:00.000Z',
+          blockIndex: 0,
+          sessionIndex: 0,
+          rotationIndex: null,
+          freeform: true,
+          templateName: 'Custom workout',
+          entries: [
+            {
+              exerciseId: '0200',
+              swappedFrom: null,
+              sets: [
+                { reps: 15, weightKg: 15, done: true },
+                { reps: 12, weightKg: 15, done: true },
+                { reps: 10, weightKg: 15, done: true },
+              ],
+            },
+          ],
+        },
+      ],
+    })
+    // Cable pushdown is in no plan slot. Against the default 8–12 × 3, 12 + 12 + 10 clears
+    // the rep-a-set tolerance, and a cable on triceps steps 2.5.
+    useStore.getState().addExerciseToActive('0200')
+    const ex = useStore.getState().active.exercises.find((e) => e.exerciseId === '0200')
+    expect(ex.kind).toBe('advance')
+    expect(ex.sets).toBe(3)
+    expect(ex.repsMin).toBe(8)
+    expect(ex.restSec).toBe(120)
+    expect(ex.performed.map((s) => s.weightKg)).toEqual([17.5, 17.5, 17.5])
+  })
 })
 
 // A custom workout is a full member of the program: it starts empty, and finishing writes a
@@ -399,6 +449,32 @@ describe('custom workout', () => {
     expect(a.templateName).toBe('Custom workout')
     expect(a.blockIndex).toBe(0)
     expect(a.sessionIndex).toBe(0)
+    expect(a.building).toBe(true)
+  })
+
+  it('stays building through adds and removes, and starts only with an exercise', () => {
+    const storage = { getItem: () => null, setItem: () => {}, removeItem: () => {} }
+    const useStore = createStore(storage)
+    useStore.getState().startFreeWorkout()
+    useStore.getState().beginFreeWorkout()
+    expect(useStore.getState().active.building).toBe(true)
+
+    useStore.getState().addExerciseToActive('0043')
+    useStore.getState().addExerciseToActive('0200')
+    expect(useStore.getState().active.building).toBe(true)
+    // Building may empty the list; a started workout keeps its last exercise.
+    useStore.getState().removeExerciseFromActive(1)
+    useStore.getState().removeExerciseFromActive(0)
+    expect(useStore.getState().active.exercises).toEqual([])
+
+    useStore.getState().addExerciseToActive('0043')
+    useStore.setState({ active: { ...useStore.getState().active, startedAt: '2000-01-01T00:00:00.000Z' } })
+    useStore.getState().beginFreeWorkout()
+    const a = useStore.getState().active
+    expect('building' in a).toBe(false)
+    expect(a.startedAt > '2000-01-01T00:00:00.000Z').toBe(true)
+    useStore.getState().removeExerciseFromActive(0)
+    expect(useStore.getState().active.exercises).toHaveLength(1)
   })
 
   it('finishing writes a freeform log, advances sessionIndex, and feeds progression', () => {

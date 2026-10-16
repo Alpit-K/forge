@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useStore } from '../store.js'
-import { nextTarget } from '../engine/progression.js'
+import { nextTarget, targetFor } from '../engine/progression.js'
 import {
+  buildWorkoutLog,
   blockWeightChanges,
   lastDoneByRotation,
   heaviestDone,
@@ -713,13 +714,14 @@ function WorkoutFlow({ onFinish }) {
     </>
   )
 
-  // A custom workout starts with no exercises. There is no logger to render, so the session
-  // overview is the whole screen — its "End" opens this flow's end sheet, the only exit until
-  // something has been added. The first add drops back into the logger on the next render.
-  if (active.freeform && !current) {
+  // A custom workout is built before it starts. While `building`, the session overview is the
+  // whole screen — adds land in its list, its "End" opens this flow's end sheet, and its
+  // Start button is what hands over to the logger. `!current` keeps an empty custom workout
+  // stored before `building` existed on this screen rather than in a logger with no exercise.
+  if (active.building || !current) {
     return (
       <>
-        <SessionOverview onEnd={() => setEndSheet(true)} />
+        <SessionOverview onEnd={() => setEndSheet(true)} onStart={active.building ? () => store().beginFreeWorkout() : undefined} />
         {sheets}
       </>
     )
@@ -768,6 +770,15 @@ function WorkoutFlow({ onFinish }) {
 
   if (exerciseDone) {
     const allDone = nextIdx === -1
+    // What this exercise will ask for next time, as if the session ended now — the same §8
+    // decision through targetFor, recomputed per render and never stored. The frozen
+    // `current.reason` explains the target you were given, which after the last set is
+    // the past: it said "first time" beneath 3×12 on a first session.
+    const ahead = targetFor(
+      current.exerciseId,
+      { repsMin: current.repsMin, repsMax: current.repsMax, prescribed: current.sets, increment: current.increment },
+      [...state.workouts, buildWorkoutLog(active, new Date().toISOString())],
+    )
     return (
       <>
         <NavBar compact title={exerciseName(exDef)} actions={<>{navActions}{overviewButton}</>} />
@@ -792,9 +803,10 @@ function WorkoutFlow({ onFinish }) {
             ))}
           </div>
 
-          <div className="caption">Progression</div>
+          <div className="caption">Next time</div>
           <div className="progression-card">
-            <p className="progression-reason">{current.reason}</p>
+            {ahead.weightKg != null && <p className="progression-next tnum">{ahead.weightKg} kg</p>}
+            <p className="progression-reason">{ahead.reason}</p>
           </div>
 
           <button type="button" className="btn-primary" onClick={() => (allDone ? finish() : store().goToExercise(nextIdx))}>

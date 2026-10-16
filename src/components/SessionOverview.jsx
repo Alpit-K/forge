@@ -7,7 +7,10 @@ import Sheet, { ActionSheet } from './Sheet.jsx'
 import ExerciseBrowser from './ExerciseBrowser.jsx'
 import Icon from './Icon.jsx'
 
-export default function SessionOverview({ onClose, onEnd }) {
+// `onStart` is passed only while a custom workout is being built: a row then opens its
+// options rather than jumping into a logger that has not started, and the targets stand in
+// for a progress count that is zero on every row.
+export default function SessionOverview({ onClose, onEnd, onStart }) {
   const active = useStore((s) => s.active)
   const customEx = useStore((s) => s.customEx)
   const [rowIdx, setRowIdx] = useState(null)
@@ -41,18 +44,27 @@ export default function SessionOverview({ onClose, onEnd }) {
             const def = getExercise(ex.exerciseId, customEx)
             const done = ex.performed.filter((s) => s.done).length
             const total = ex.performed.length
-            const status = done === 0 ? 'Not started' : done === total ? 'Complete' : `In progress · ${done}/${total}`
+            const weight = ex.performed[0].weightKg
+            const status = onStart
+              ? `${total} × ${ex.repsMin}–${ex.repsMax}${weight != null ? ` · ${weight} kg` : ''}`
+              : done === 0
+                ? 'Not started'
+                : done === total
+                  ? 'Complete'
+                  : `In progress · ${done}/${total}`
             return (
               <div className="row" key={i}>
-                <button type="button" className="row-jump" onClick={() => jump(i)}>
+                <button type="button" className="row-jump" onClick={() => (onStart ? setRowIdx(i) : jump(i))}>
                   <Thumb exercise={def} />
                   <div className="row-label">
                     <div className="title">{exerciseName(def)}</div>
-                    <div className="subtitle">{status}</div>
+                    <div className="subtitle tnum">{status}</div>
                   </div>
-                  <span className="row-value tnum">
-                    {done}/{total}
-                  </span>
+                  {!onStart && (
+                    <span className="row-value tnum">
+                      {done}/{total}
+                    </span>
+                  )}
                 </button>
                 <button
                   type="button"
@@ -69,6 +81,11 @@ export default function SessionOverview({ onClose, onEnd }) {
         <button type="button" className="btn" onClick={() => setAdding(true)}>
           Add exercise
         </button>
+        {onStart && (
+          <button type="button" className="btn-primary" disabled={active.exercises.length === 0} onClick={onStart}>
+            Start workout
+          </button>
+        )}
       </div>
 
       {rowIdx != null && (

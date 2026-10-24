@@ -299,6 +299,41 @@ describe('sets added mid-workout', () => {
   })
 })
 
+// The working weight is the heaviest set, so a set at a lighter weight inside the
+// prescription is not evidence for it. 50×12 then 60×12, 60×12 used to read as 3×12 at 60
+// and advance — two sets at 60 is what was actually done.
+describe('a prescribed set below the working weight', () => {
+  it('holds a session that ramped up into the working weight', () => {
+    const w = [workout('0043', [set(12, 50), set(12, 60), set(12, 60)])]
+    const t = nextTarget('0043', state({ workouts: w }))
+    expect(t.kind).toBe('hold')
+    expect(t.weightKg).toBe(60)
+    expect(t.reason).toBe('2 of 3 sets at 60 kg — all 3 at 60 kg to move up')
+  })
+
+  it('blocks the tolerance advance too', () => {
+    const w = [workout('0043', [set(12, 60), set(11, 60), set(10, 55)])]
+    const t = nextTarget('0043', state({ workouts: w }))
+    expect(t.kind).toBe('hold')
+    expect(t.reason).toBe('2 of 3 sets at 60 kg — all 3 at 60 kg to move up')
+  })
+
+  it('still lets a lighter back-off set added after the prescription through', () => {
+    const w = [workout('0043', [set(12, 60), set(12, 60), set(12, 60), set(12, 50)])]
+    expect(nextTarget('0043', state({ workouts: w })).weightKg).toBe(62.5)
+  })
+
+  it('advances once the next session does every set at that weight', () => {
+    const w = [
+      workout('0043', [set(12, 50), set(12, 60), set(12, 60)]),
+      workout('0043', [set(12, 60), set(12, 60), set(12, 60)], 1),
+    ]
+    const t = nextTarget('0043', state({ workouts: w }))
+    expect(t.kind).toBe('advance')
+    expect(t.weightKg).toBe(62.5)
+  })
+})
+
 describe('findSlotFor', () => {
   it('finds the rotation slot an unswapped exercise sits in', () => {
     const found = findSlotFor(seedPlan, {}, '0085')

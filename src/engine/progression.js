@@ -136,14 +136,20 @@ function prescribedRepsOf(entry, prescribed) {
 //   - A set below repsMin blocks it outright. repsMin and repsMax can be set equal in the
 //     Plan editor, and at 12–12 a pooled tolerance is cleared by 11-11-11 — every set a
 //     miss. The floor is the rule; the tolerance only ever bends the ceiling.
-function earnsAdvance(entry, repsMin, repsMax, prescribed) {
+//
+// Either way every prescribed set has to be at the working weight. classifySet reads reps
+// alone, so a lighter set at the top of the range would otherwise count as a top set at the
+// heaviest one: 50×12, 60×12, 60×12 advanced as though it were 3×12 at 60.
+function earnsAdvance(entry, base, repsMin, repsMax, prescribed) {
   const statuses = classifySession(entry, repsMin, repsMax, prescribed)
   const allTop = statuses.length === prescribed && statuses.every((s) => s === 'top')
   const reps = prescribedRepsOf(entry, prescribed)
   const clampedTotal = reps.reduce((sum, r) => sum + (r == null ? 0 : Math.min(r, repsMax)), 0)
   const withinOneRep =
     clampedTotal >= prescribed * (repsMax - 1) && !statuses.some((s) => s === 'miss')
-  return { statuses, allTop, withinOneRep, reps, earned: allTop || withinOneRep }
+  const atBase = entry.sets.slice(0, prescribed).filter((s) => s && s.done && s.weightKg === base).length
+  const repsEarned = allTop || withinOneRep
+  return { statuses, allTop, withinOneRep, reps, atBase, repsEarned, earned: repsEarned && atBase === prescribed }
 }
 
 const kg = (weight) => Math.round(weight * 100) / 100
@@ -167,7 +173,7 @@ function stepAfter(history, index, exerciseId, rules, userMoved) {
   const base = workingWeight(entry)
   if (base == null) return { kind: 'hold', weightKg: null, base: null, entry }
 
-  const advance = earnsAdvance(entry, repsMin, repsMax, prescribed)
+  const advance = earnsAdvance(entry, base, repsMin, repsMax, prescribed)
   if (advance.earned) {
     return {
       kind: 'advance',
@@ -269,7 +275,11 @@ export function targetFor(exerciseId, rules, workouts = []) {
 
   let reason
   if (base == null) reason = FIRST_REASON
-  else if (moved > 0 && userMoved[lastIdx]) {
+  else if (outcome.advance.repsEarned) {
+    // The reps were there and only the weight held it back, which none of the lines below
+    // would say: "Holding — you got 12, 12, 12" reads as a bug.
+    reason = `${outcome.advance.atBase} of ${prescribed} sets at ${base} kg — all ${prescribed} at ${base} kg to move up`
+  } else if (moved > 0 && userMoved[lastIdx]) {
     reason = outcome.advance.statuses.some((s) => s === 'miss')
       ? `Moved up to ${base} kg — ${prescribed}×${repsMin} didn't land yet`
       : `Moved up to ${base} kg — build back to ${prescribed}×${repsMax}`

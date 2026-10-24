@@ -383,7 +383,7 @@ function IdleView() {
               Cardio {week.cardio} of {settings.weeklyCardio}
             </span>
           </div>
-          {(mix.length > 0 || week.distanceKm > 0 || week.easyPct !== null) && (
+          {(mix.length > 0 || week.distanceKm > 0) && (
             <div className="week-meta tnum">
               {mix.map((m) => (
                 <span key={m.label}>
@@ -391,9 +391,6 @@ function IdleView() {
                 </span>
               ))}
               {week.distanceKm > 0 && <span>{fmtDistance(week.distanceKm)}</span>}
-              {/* Null, not zero, when nothing is tagged — an untagged week is unknown, and a
-                  0% here would be inventing data the user never entered. */}
-              {week.easyPct !== null && <span>{week.easyPct}% easy</span>}
             </div>
           )}
         </button>

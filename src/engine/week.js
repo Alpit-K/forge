@@ -161,3 +161,26 @@ export function recentWeeks(workouts, activities, now = new Date(), count = 6) {
   }
   return weeks
 }
+
+// History's month calendar: whole Monday-first weeks covering the month `month` falls in,
+// one entry per day, summarised the same way as every other window. Days outside the month
+// carry `inMonth: false` so the grid keeps its shape. A day with nothing in it is a day with
+// zero counts — the calendar draws it plain, and nothing here knows what the week shape asked
+// for, so there is no planned-but-empty state to draw (owner's decision, 2026-10-29).
+export function monthDays(workouts, activities, month, now = new Date()) {
+  const first = new Date(month.getFullYear(), month.getMonth(), 1)
+  const next = new Date(month.getFullYear(), month.getMonth() + 1, 1)
+  const today = startOfDay(now).getTime()
+  const days = []
+  for (let d = weekStart(first); d < next || dayIndex(d) !== 0; d = addDays(d, 1)) {
+    const day = summarise(workouts, activities, d, addDays(d, 1))
+    days.push({
+      date: d,
+      inMonth: d.getMonth() === first.getMonth(),
+      isToday: d.getTime() === today,
+      lifts: day.lifts,
+      cardio: day.cardio,
+    })
+  }
+  return days
+}

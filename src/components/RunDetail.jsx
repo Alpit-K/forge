@@ -73,34 +73,37 @@ export default function RunDetail() {
       {longRuns.length > 1 && (
         <>
           <div className="caption">Long runs</div>
-          <Sparkline cat="cardio" values={longRuns.map((r) => r.distanceKm)} />
+          <Sparkline cat="cardio" format={fmtDistance} points={longRuns.map((r) => ({ value: r.distanceKm, at: r.at }))} />
         </>
       )}
 
       {easyPaces.length > 1 && (
         <>
           <div className="caption">Easy-run pace</div>
-          {/* Negated so the line rises as you get faster. Every other sparkline in the app
-              means "up is more of a good thing", and pace is the one number where the good
-              direction is down. The drawing is unlabelled and decorative — the stat above
-              carries the numbers — so matching the convention beats plotting it literally. */}
-          <Sparkline cat="cardio" values={easyPaces.map((r) => -r.paceSecPerKm)} />
+          {/* Drawn the natural way up, now the chart prints its numbers: negated, a 6:10
+              would sit above a 6:40. Lower is the good direction, so it is said in words. */}
+          <Sparkline
+            cat="cardio"
+            format={fmtPaceSec}
+            points={easyPaces.map((r) => ({ value: r.paceSecPerKm, at: r.at }))}
+          />
+          <p className="chart-note">Lower is better at the same effort.</p>
         </>
       )}
 
       {easyHr.length > 1 && (
         <>
           {/* The change is stated in the caption rather than as a fourth stat: the row above
-              holds three and is measured to fit one line without wrapping. Negated for the
-              same reason as the pace line — on a like-for-like easy run a lower heart rate is
-              the good direction, and every sparkline in the app rises towards the good one. */}
+              holds three and is measured to fit one line without wrapping. Drawn the natural
+              way up, as the pace line is, with the good direction said in words. */}
           <div className="caption">
             Easy-run heart rate
             {easyHrStats.hrChange != null && easyHrStats.hrChange !== 0
               ? ` · ${Math.abs(easyHrStats.hrChange)} bpm ${easyHrStats.hrChange < 0 ? 'lower' : 'higher'} since ${fmtDate(easyHrStats.firstHrAt)}`
               : ''}
           </div>
-          <Sparkline cat="cardio" values={easyHr.map((r) => -r.avgHr)} />
+          <Sparkline cat="cardio" format={fmtHr} points={easyHr.map((r) => ({ value: r.avgHr, at: r.at }))} />
+          <p className="chart-note">Lower is better at the same effort.</p>
         </>
       )}
 
@@ -109,16 +112,15 @@ export default function RunDetail() {
         {recent.map((r) => (
           <div className="ex-session" key={r.at}>
             <span className="ex-session-date">{fmtDate(r.at)}</span>
+            {/* Two lines, the distance on the first: one line of five facts broke after the
+                heart rate and left "bpm" on a line of its own. */}
             <span className="ex-session-sets tnum">
-              {[
-                runTypeLabel(r.runType),
-                fmtDistance(r.distanceKm),
-                fmtPaceSec(r.paceSecPerKm),
-                fmtHr(r.avgHr),
-                fmtWalkBreaks(r.walkBreaks),
-              ]
-                .filter(Boolean)
-                .join(' · ')}
+              {fmtDistance(r.distanceKm)}
+              <span className="ex-session-more">
+                {[runTypeLabel(r.runType), fmtPaceSec(r.paceSecPerKm), fmtHr(r.avgHr), fmtWalkBreaks(r.walkBreaks)]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
             </span>
           </div>
         ))}

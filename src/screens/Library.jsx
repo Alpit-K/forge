@@ -77,7 +77,7 @@ export default function Library() {
         }
       />
       <div className="screen-body">
-        <ExerciseBrowser onSelect={setDetail} />
+        <ExerciseBrowser mine onSelect={setDetail} />
       </div>
 
       {detail && <DetailSheet exercise={detail} onClose={() => setDetail(null)} />}

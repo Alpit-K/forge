@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
-import { allExercises, exerciseName, swapSuggestions } from '../lib/exercises.js'
+import { allExercises, exerciseName, getExercise, swapSuggestions } from '../lib/exercises.js'
+import { exerciseHistory, exerciseStats } from '../engine/session.js'
+import Sparkline from './Sparkline.jsx'
 import { matchesQuery, queryRank } from '../lib/search.js'
 import { Thumb } from './ExerciseImage.jsx'
 import Icon from './Icon.jsx'
@@ -47,7 +49,7 @@ function Chips({ label, options, value, onChange }) {
   )
 }
 
-function ExerciseRow({ exercise, subtitle, onClick }) {
+function ExerciseRow({ exercise, subtitle, trend, onClick }) {
   return (
     <button type="button" className="row" onClick={onClick}>
       <Thumb exercise={exercise} />
@@ -55,8 +57,40 @@ function ExerciseRow({ exercise, subtitle, onClick }) {
         <div className="title">{exerciseName(exercise)}</div>
         <div className="subtitle">{subtitle}</div>
       </div>
+      {trend && <span className="row-spark">{trend}</span>}
     </button>
   )
+}
+
+// Every exercise with logged work, most recently trained first, each with the figures
+// ExerciseDetail states — the working weight and the change since the first session (the
+// date it is measured from is in the sheet the row opens; on the row it wrapped) — read
+// through the same exerciseHistory and exerciseStats, so the row and the sheet it opens
+// cannot disagree.
+const MINE_SHOWN = 6
+
+function yourExercises(workouts, customEx) {
+  const order = []
+  for (let i = workouts.length - 1; i >= 0; i -= 1) {
+    for (const e of workouts[i].entries) {
+      if (!order.includes(e.exerciseId) && e.sets.some((st) => st && st.done)) order.push(e.exerciseId)
+    }
+  }
+  return order
+    .map((id) => {
+      const exercise = getExercise(id, customEx)
+      if (!exercise) return null
+      const history = exerciseHistory(workouts, id)
+      return { exercise, history, stats: exerciseStats(history) }
+    })
+    .filter(Boolean)
+}
+
+function mineSubtitle({ stats }) {
+  if (!stats || stats.latest == null) return 'No weight logged'
+  const change =
+    stats.change != null && stats.change !== 0 ? ` · ${stats.change > 0 ? '+' : '−'}${Math.abs(stats.change)} kg` : ''
+  return `${stats.latest} kg${change}`
 }
 
 // Exercise browser: free-text search plus body part / equipment / target filters. Equipment
@@ -64,7 +98,7 @@ function ExerciseRow({ exercise, subtitle, onClick }) {
 // visible combination has results. `suggestFor` is the exercise being swapped out; it
 // puts a short list of like-for-like replacements above the full one, shown only while no
 // search or filter is set — once you are looking for something, they are in the way.
-export default function ExerciseBrowser({ onSelect, selectLabel, suggestFor, exclude }) {
+export default function ExerciseBrowser({ onSelect, selectLabel, suggestFor, exclude, mine = false }) {
   const customEx = useStore((s) => s.customEx)
   const workouts = useStore((s) => s.workouts)
   const [search, setSearch] = useState('')
@@ -73,6 +107,7 @@ export default function ExerciseBrowser({ onSelect, selectLabel, suggestFor, exc
   const [targetChoice, setTargetChoice] = useState(null)
   const [preview, setPreview] = useState(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const [mineAll, setMineAll] = useState(false)
 
   const all = useMemo(() => allExercises(customEx), [customEx])
 
@@ -120,6 +155,8 @@ export default function ExerciseBrowser({ onSelect, selectLabel, suggestFor, exc
 
   const suggestions = suggestFor ? swapSuggestions(suggestFor, all, workouts, exclude) : []
   const showSuggestions = suggestions.length > 0 && search === '' && activeFilters.length === 0
+  const yours = useMemo(() => (mine ? yourExercises(workouts, customEx) : []), [mine, workouts, customEx])
+  const showMine = yours.length > 0 && search === '' && activeFilters.length === 0
   const choose = (e) => (selectLabel ? setPreview(e) : onSelect(e))
 
   const clearFilters = () => {
@@ -183,6 +220,36 @@ export default function ExerciseBrowser({ onSelect, selectLabel, suggestFor, exc
           <Chips label="Body part" options={bodyParts} value={bodyPart} onChange={setBodyPart} />
           <Chips label="Equipment" options={equipmentOptions} value={equipment} onChange={setEquipmentChoice} />
           <Chips label="Target muscle" options={targetOptions} value={target} onChange={setTargetChoice} />
+        </>
+      )}
+
+      {/* Your own record first: the exercises you train, not the dataset's alphabet. The
+          dataset is still below, and the section steps aside once you search or filter. */}
+      {showMine && (
+        <>
+          <Section>Your exercises · {yours.length}</Section>
+          <div className="list">
+            {(mineAll ? yours : yours.slice(0, MINE_SHOWN)).map((y) => (
+              <ExerciseRow
+                key={y.exercise.id}
+                exercise={y.exercise}
+                subtitle={mineSubtitle(y)}
+                trend={
+                  <Sparkline
+                    compact
+                    points={y.history.filter((h) => h.topWeight != null).map((h) => ({ value: h.topWeight, at: h.at }))}
+                  />
+                }
+                onClick={() => choose(y.exercise)}
+              />
+            ))}
+          </div>
+          {yours.length > MINE_SHOWN && (
+            <button type="button" className="btn mine-toggle" onClick={() => setMineAll(!mineAll)}>
+              {mineAll ? 'Show fewer' : `Show all ${yours.length}`}
+            </button>
+          )}
+          <Section>All exercises</Section>
         </>
       )}
 

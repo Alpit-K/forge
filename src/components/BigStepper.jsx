@@ -4,7 +4,7 @@ import Icon from './Icon.jsx'
 // The single-set logger shows one value at a time, so it can afford to be large. The number
 // is tappable to type a correction; the draft commits on blur or Enter, never per keystroke,
 // because a weight edit propagates to the later sets of the same exercise.
-export default function BigStepper({ label, value, unit, onStep, onCommit }) {
+export default function BigStepper({ label, value, unit, note, onStep, onCommit }) {
   const [draft, setDraft] = useState(null)
 
   const commit = () => {
@@ -51,6 +51,7 @@ export default function BigStepper({ label, value, unit, onStep, onCommit }) {
           <Icon name="plus" size={22} />
         </button>
       </div>
+      {note && <div className="big-stepper-note tnum">{note}</div>}
     </div>
   )
 }

@@ -56,29 +56,29 @@ export default function RideDetail() {
       {history.length > 1 && (
         <>
           <div className="caption">Ride distance</div>
-          <Sparkline cat="cardio" values={history.map((r) => r.distanceKm)} />
+          <Sparkline cat="cardio" format={fmtDistance} points={history.map((r) => ({ value: r.distanceKm, at: r.at }))} />
         </>
       )}
 
       {easySpeeds.length > 1 && (
         <>
-          {/* Not negated: unlike pace, a higher speed is already the good direction. */}
           <div className="caption">Easy-ride speed</div>
-          <Sparkline cat="cardio" values={easySpeeds.map((r) => r.speedKmh)} />
+          <Sparkline cat="cardio" format={fmtSpeed} points={easySpeeds.map((r) => ({ value: r.speedKmh, at: r.at }))} />
         </>
       )}
 
       {easyHr.length > 1 && (
         <>
-          {/* Negated, as the run trend's is — at the same easy effort a lower heart rate is the
-              good direction, and every sparkline in the app rises towards the good one. */}
+          {/* Drawn the natural way up, as the run trend's is, with the good direction — lower,
+              at the same easy effort — said in words beneath it. */}
           <div className="caption">
             Easy-ride heart rate
             {easyHrStats.hrChange != null && easyHrStats.hrChange !== 0
               ? ` · ${Math.abs(easyHrStats.hrChange)} bpm ${easyHrStats.hrChange < 0 ? 'lower' : 'higher'} since ${fmtDate(easyHrStats.firstHrAt)}`
               : ''}
           </div>
-          <Sparkline cat="cardio" values={easyHr.map((r) => -r.avgHr)} />
+          <Sparkline cat="cardio" format={fmtHr} points={easyHr.map((r) => ({ value: r.avgHr, at: r.at }))} />
+          <p className="chart-note">Lower is better at the same effort.</p>
         </>
       )}
 
@@ -87,15 +87,18 @@ export default function RideDetail() {
         {recent.map((r) => (
           <div className="ex-session" key={r.at}>
             <span className="ex-session-date">{fmtDate(r.at)}</span>
+            {/* Two lines, the distance on the first, as RunDetail's are. */}
             <span className="ex-session-sets tnum">
-              {[
-                fmtDistance(r.distanceKm),
-                Number.isFinite(r.minutes) && r.minutes > 0 ? `${r.minutes} min` : null,
-                fmtSpeed(r.speedKmh),
-                fmtHr(r.avgHr),
-              ]
-                .filter(Boolean)
-                .join(' · ')}
+              {fmtDistance(r.distanceKm)}
+              <span className="ex-session-more">
+                {[
+                  Number.isFinite(r.minutes) && r.minutes > 0 ? `${r.minutes} min` : null,
+                  fmtSpeed(r.speedKmh),
+                  fmtHr(r.avgHr),
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
             </span>
           </div>
         ))}

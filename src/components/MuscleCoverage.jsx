@@ -52,7 +52,19 @@ export default function MuscleCoverage({ onAdd }) {
   const inWorkout = new Set(active ? active.exercises.map((e) => e.exerciseId) : [])
 
   const due = (g) => (planned ? coverageDue(planned[g].sets, sessions, plan.sessionCount) : null)
-  const levels = coverageLevels(rates ? { done, rates } : { done, due: Object.fromEntries(MUSCLE_GROUPS.map((g) => [g, due(g)])) })
+  // Before the block's first session there is nothing done to shade, and an all-dark body
+  // said nothing at the one moment you open this to see what the block asks for. So the
+  // figure shows the plan itself until a session lands, shaded relative to the busiest group
+  // exactly as an earlier block's rates are. The list's numbers are unchanged (owner's
+  // decision, 2026-10-29).
+  const showPlan = planned != null && sessions === 0
+  const levels = coverageLevels(
+    showPlan
+      ? { done, rates: Object.fromEntries(MUSCLE_GROUPS.map((g) => [g, planned[g].sets])) }
+      : rates
+        ? { done, rates }
+        : { done, due: Object.fromEntries(MUSCLE_GROUPS.map((g) => [g, due(g)])) },
+  )
   const rows = MUSCLE_GROUPS.filter((g) => done[g].sets > 0 || (planned && planned[g].sets > 0))
   const untrained = MUSCLE_GROUPS.filter((g) => done[g].sets === 0)
 
@@ -99,6 +111,7 @@ export default function MuscleCoverage({ onAdd }) {
         </div>
       )}
 
+      {showPlan && <div className="caption cov-plan-label">What the plan asks for</div>}
       <div className="cov-figures">
         <Figure view={BODY.front} levels={levels} />
         <Figure view={BODY.back} levels={levels} />
@@ -155,7 +168,13 @@ export default function MuscleCoverage({ onAdd }) {
       )}
 
       {inWindow.length === 0 ? (
-        <p className="cov-note">{all ? 'Nothing logged yet.' : 'Nothing logged in this block yet.'}</p>
+        <p className="cov-note">
+          {all
+            ? 'Nothing logged yet.'
+            : showPlan
+              ? 'Nothing logged in this block yet. The figure shows the plan until the first session.'
+              : 'Nothing logged in this block yet.'}
+        </p>
       ) : (
         untrained.length > 0 && (
           <>

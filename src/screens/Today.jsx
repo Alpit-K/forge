@@ -10,10 +10,14 @@ import {
   sessionsDone,
   isBlockComplete,
   nextUnfinished,
+  typicalMinutes,
+  setsCompleted,
+  totalVolume,
+  durationSeconds,
 } from '../engine/session.js'
-import { recommend, nextSession } from '../engine/coach.js'
-import { weekDays, dayIndex } from '../engine/week.js'
-import { getExercise, exerciseName, gifSrc, weightHint } from '../lib/exercises.js'
+import { recommend, nextSession, sportNoun } from '../engine/coach.js'
+import { weekDays, dayIndex, weekSummary } from '../engine/week.js'
+import { getExercise, exerciseName, gifSrc, weightHint, platesOnly, perSide, warmupSteps } from '../lib/exercises.js'
 import { ACTIVITY_TYPES } from '../lib/activities.js'
 import NavBar from '../components/NavBar.jsx'
 import { Group, Row, Section } from '../components/List.jsx'
@@ -27,7 +31,7 @@ import ActivitySheet from '../components/ActivitySheet.jsx'
 import WeekSheet from '../components/WeekSheet.jsx'
 import { requestReloadIfIdle } from '../lib/update.js'
 import Icon from '../components/Icon.jsx'
-import { fmtDuration, fmtDate, fmtAgo, fmtActivityCount, fmtDistance, fmtBlockChange } from '../lib/format.js'
+import { fmtDuration, fmtDate, fmtAgo, fmtActivityCount, fmtDistance, fmtBlockChange, fmtHr } from '../lib/format.js'
 
 export default function Today() {
   const active = useStore((s) => s.active)
@@ -76,6 +80,33 @@ function leadTarget(state, rotationIndex) {
   }
 }
 
+// A target in the few words a one-line row has room for. The full reason is on the logger;
+// this is only the direction, read from the numbers the target already carries — the
+// weight it asks for against the heaviest set it came from — so it cannot say anything the
+// engine did not decide.
+function shortTarget(target) {
+  if (target.kind === 'first') return 'First time'
+  const last = heaviestDone(target.lastSets)
+  const diff = last != null && target.weightKg != null ? Math.round((target.weightKg - last) * 100) / 100 : 0
+  if (diff > 0) return `Up ${diff} kg`
+  if (diff < 0) return `Down ${Math.abs(diff)} kg`
+  return 'Hold'
+}
+
+// The most recent easy session of the sport the card is suggesting, as the number to aim at
+// — the cardio card's equivalent of a lift's opening target. Nothing dated after now: a
+// session still to come has not happened (the same cutoff coach.js applies).
+function lastEasy(activities, sport, now) {
+  let best = null
+  for (const a of activities) {
+    if (a.type !== sport || a.intensity !== 'easy') continue
+    const t = Date.parse(a.at)
+    if (!Number.isFinite(t) || t > now.getTime()) continue
+    if (!best || t > Date.parse(best.at)) best = a
+  }
+  return best
+}
+
 // Seven derived cells, carrying two independent facts: colour says whether the day is
 // training at all, fill says whether it happened. So a planned day is an accent ring and a
 // rest day is a small grey dot — the two used to be a grey ring and a grey dot of the same
@@ -122,14 +153,15 @@ function activityMix(cardioLogs) {
 // The one decision. Everything else on this screen is below it, and the reason sits BELOW
 // the action deliberately — the explanation is what makes the card trustworthy, not what
 // you came to the screen to read.
-function CoachCard({ rec, lead, meta, onStart, onLog }) {
+function CoachCard({ rec, lead, meta, lastSession, ceiling, onStart, onLog }) {
   const kind = rec.kind === 'lift' ? 'Lift' : rec.kind === 'cardio' ? 'Cardio' : 'Rest'
+  const noun = rec.kind === 'cardio' ? sportNoun(rec.sport) : null
   // The same four glyphs and the same two tints the week planner in Settings draws, so the
   // suggestion and the shape it came from are plainly the same vocabulary. A suggested long
   // run takes `route` for the reason it does there: it is the cardio kind done further, and
   // a second blue would read as a fault rather than a distinction.
   const glyph =
-    rec.kind === 'lift' ? 'dumbbell' : rec.kind === 'rest' ? 'rest' : rec.cardioKind === 'long' ? 'route' : 'run'
+    rec.kind === 'lift' ? 'dumbbell' : rec.kind === 'rest' ? 'rest' : rec.cardioKind === 'long' ? 'route' : rec.sport || 'run'
   const cat = rec.kind === 'lift' ? 'lift' : rec.kind === 'rest' ? 'rest' : 'cardio'
   return (
     <div className="coach-card">
@@ -162,9 +194,32 @@ function CoachCard({ rec, lead, meta, onStart, onLog }) {
           Start workout
         </button>
       )}
+      {/* The last easy session of the sport, as the lift card shows a lift's opening target:
+          the number that tells you what "easy" meant last time. The ceiling is the user's
+          own limit, set in Settings — the app proposes no target of its own. */}
+      {rec.kind === 'cardio' && (lastSession || ceiling) && (
+        <div className="coach-ref">
+          {lastSession && (
+            <div className="coach-last">
+              <span className="coach-target-name">Last easy {noun || 'session'} · {fmtDate(lastSession.at)}</span>
+              <span className="coach-last-value tnum">
+                {[
+                  typeof lastSession.distanceKm === 'number' ? fmtDistance(lastSession.distanceKm) : null,
+                  `${lastSession.minutes} min`,
+                  fmtHr(lastSession.avgHr),
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
+            </div>
+          )}
+          {ceiling && <div className="coach-ceiling tnum">Keep under {ceiling} bpm</div>}
+        </div>
+      )}
+
       {rec.kind === 'cardio' && (
         <button type="button" className="btn-primary" onClick={onLog}>
-          Log it
+          {noun ? `Log ${noun}` : 'Log it'}
         </button>
       )}
       {rec.reason && <div className="coach-reason">{rec.reason}</div>}
@@ -217,10 +272,16 @@ function IdleView() {
     rec.kind === 'lift'
       ? `Session ${sessionsDone(workouts, progress.blockIndex) + 1} of ${plan.sessionCount}`
       : null
+  // How long the suggested slot usually takes, from its own logs. On a busy evening it is
+  // the number that decides whether you start.
+  const typical = suggestedIndex == null ? null : typicalMinutes(workouts, suggestedIndex, plan.rotation.length)
+  const shown = typical == null ? rec : { ...rec, detail: `${rec.detail} · usually ${typical} min` }
+  const lastSession = rec.kind === 'cardio' ? lastEasy(activities, rec.sport, now) : null
   const mix = activityMix(week.cardioLogs)
 
-  // The coach only ever suggests easy cardio, so "Log it" opens with Easy chosen and nothing
-  // else — which activity it was is the user's to say, and a run type would be a guess.
+  // The coach only ever suggests easy cardio, so "Log it" opens with Easy chosen and the
+  // current sport from Settings — the user's own setting, never a guess from the last log.
+  // A run type would be a guess, so none is set.
   const logSuggested = () => setActivitySheet({ intensity: 'easy' })
 
   return (
@@ -235,9 +296,11 @@ function IdleView() {
       />
       <div className="screen-body">
         <CoachCard
-          rec={rec}
+          rec={shown}
           lead={lead}
           meta={meta}
+          lastSession={lastSession}
+          ceiling={rec.kind === 'cardio' ? settings.hrCeiling : null}
           onStart={() => suggestedIndex != null && useStore.getState().startWorkout(suggestedIndex)}
           onLog={logSuggested}
         />
@@ -268,9 +331,7 @@ function IdleView() {
                 <Row
                   key={t.exerciseId}
                   title={exerciseName(ex)}
-                  subtitle={`${t.sets} × ${t.repsMin}–${t.repsMax} · ${
-                    target.kind === 'first' ? 'First time' : target.reason
-                  }`}
+                  subtitle={`${t.sets} × ${t.repsMin}–${t.repsMax} · ${shortTarget(target)}`}
                   value={target.weightKg != null ? `${target.weightKg} kg` : null}
                   metric
                   thumb={<Thumb exercise={ex} />}
@@ -323,9 +384,7 @@ function IdleView() {
                         <Row
                           key={t.exerciseId}
                           title={exerciseName(ex)}
-                          subtitle={`${t.sets} × ${t.repsMin}–${t.repsMax} · ${
-                            target.kind === 'first' ? 'First time' : target.reason
-                          }`}
+                          subtitle={`${t.sets} × ${t.repsMin}–${t.repsMax} · ${shortTarget(target)}`}
                           value={target.weightKg != null ? `${target.weightKg} kg` : null}
                           metric
                           thumb={<Thumb exercise={ex} />}
@@ -415,8 +474,25 @@ function IdleView() {
 // time" means the plan's slots, which a mid-session swap does not change.
 function SummaryView({ summary, onDone }) {
   const state = useStore((s) => s)
-  const { plan, swaps, customEx } = state
+  const { plan, swaps, customEx, workouts, activities, settings } = state
   const rotationIndex = summary.log.rotationIndex
+
+  // The last time this same session was done, stated beside today's figures — no colour and
+  // no arrow, the way "Held" is stated. A custom workout has no "same session" to compare.
+  const previous = summary.log.freeform
+    ? null
+    : workouts.findLast((w) => w.id !== summary.log.id && !w.freeform && w.templateName === summary.log.templateName)
+  const previousVolume = previous ? totalVolume(previous.entries) : 0
+  const previousLine = previous
+    ? [
+        `Last ${previous.templateName}: ${Math.round(durationSeconds(previous.startedAt, previous.finishedAt) / 60)} min`,
+        `${setsCompleted(previous.entries)} sets`,
+        previousVolume > 0 ? `${previousVolume.toLocaleString('en-GB')} kg` : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : null
+  const week = weekSummary(workouts, activities)
   const rotation = rotationIndex != null ? plan.rotation[rotationIndex] : null
 
   const progression = (rotation ? rotation.exercises : []).map((t) => {
@@ -466,6 +542,13 @@ function SummaryView({ summary, onDone }) {
             <div className="value tnum">{summary.volume.toLocaleString('en-GB')}</div>
             <div className="label">kg Volume</div>
           </div>
+        </div>
+
+        <div className="summary-context tnum">
+          {previousLine && <p>{previousLine}</p>}
+          <p>
+            Lifts {week.lifts} of {settings.weeklyLifts} this week
+          </p>
         </div>
 
         {progression.length > 0 ? (
@@ -547,11 +630,14 @@ function BlockCompleteView() {
               const ex = getExercise(c.exerciseId, customEx)
               const { text, direction } = fmtBlockChange(c)
               return (
+                // The change sits under the name rather than beside it: "15 kg: 10s → 11s"
+                // beside "Cable Pushdown (with Rope Attachment)" squeezed the name to four
+                // lines. Under it, every row reads the same way whatever the name's length.
                 <Row
                   key={c.exerciseId}
                   title={exerciseName(ex)}
                   thumb={<Thumb exercise={ex} />}
-                  value={
+                  subtitle={
                     <span className={`delta${direction ? ` ${direction}` : ''}`}>
                       {text}
                     </span>
@@ -590,6 +676,14 @@ function MomentumBar({ exercises, current }) {
   )
 }
 
+// The target an exercise's first open set is prefilled with, written the way the logger
+// writes its own target line.
+function nextUpTarget(ex) {
+  const set = ex.performed.find((s) => !s.done) || ex.performed[0]
+  const reps = `${ex.repsMin}–${ex.repsMax}`
+  return set && set.weightKg != null ? `${set.weightKg} kg × ${reps}` : `${reps} reps`
+}
+
 function WorkoutFlow({ onFinish }) {
   const state = useStore((s) => s)
   const { active, customEx } = state
@@ -597,6 +691,8 @@ function WorkoutFlow({ onFinish }) {
   const [endSheet, setEndSheet] = useState(false)
   const [whyOpen, setWhyOpen] = useState(false)
   const [overview, setOverview] = useState(false)
+  const [warmedUp, setWarmedUp] = useState([])
+  const [editLogged, setEditLogged] = useState(false)
 
   const exIdx = active.currentIndex
   const current = active.exercises[exIdx] || null
@@ -718,6 +814,10 @@ function WorkoutFlow({ onFinish }) {
   if (resting) {
     const nextSetIdx = current.performed.findIndex((s) => !s.done)
     const nextSet = current.performed[nextSetIdx]
+    // The set just logged — rest is when you notice it was 9, not 8. Corrected in place, so
+    // the timer, which renders from restStartedAt, keeps running underneath the sheet.
+    const lastIdx = current.performed.findLastIndex((s) => s.done)
+    const lastSet = current.performed[lastIdx]
     return (
       <>
         {/* The exercise name, not the word "Rest" — the ring already says REST in the
@@ -749,8 +849,37 @@ function WorkoutFlow({ onFinish }) {
                 {nextSet.weightKg == null ? ' reps' : ''}
               </div>
             </div>
+            {lastSet && (
+              <button type="button" className="just-logged" onClick={() => setEditLogged(true)}>
+                <span className="just-logged-label">Just logged · Set {lastIdx + 1}</span>
+                <span className="just-logged-value tnum">
+                  {lastSet.weightKg != null ? `${lastSet.weightKg} × ${lastSet.reps}` : `${lastSet.reps} reps`}
+                </span>
+                <span className="just-logged-edit">Edit</span>
+              </button>
+            )}
           </RestTimer>
         </div>
+        {editLogged && lastSet && (
+          <Sheet title={`Set ${lastIdx + 1}`} onClose={() => setEditLogged(false)}>
+            <BigStepper
+              label="Weight"
+              value={lastSet.weightKg}
+              unit="kg"
+              onStep={(d) => stepWeight(lastIdx, d)}
+              onCommit={(v) => setWeight(lastIdx, v)}
+            />
+            <BigStepper
+              label="Reps"
+              value={lastSet.reps}
+              onStep={(d) => stepReps(lastIdx, d)}
+              onCommit={(v) => changeSet(lastIdx, { reps: Math.max(0, Math.round(v)) })}
+            />
+            <button type="button" className="btn-primary" onClick={() => setEditLogged(false)}>
+              Done
+            </button>
+          </Sheet>
+        )}
         {sheets}
       </>
     )
@@ -800,7 +929,17 @@ function WorkoutFlow({ onFinish }) {
           <button type="button" className="btn-primary" onClick={() => (allDone ? finish() : store().goToExercise(nextIdx))}>
             {allDone ? 'Finish Workout' : 'Next exercise'}
           </button>
-          {!allDone && nextDef && <p className="next-up">{exerciseName(nextDef)}</p>}
+          {/* What is next, as a row you can read walking to the machine: the thumbnail, the
+              name, and the target its first open set is prefilled with. */}
+          {!allDone && nextDef && (
+            <Group className="next-up-row">
+              <Row
+                thumb={<Thumb exercise={nextDef} />}
+                title={exerciseName(nextDef)}
+                subtitle={nextUpTarget(active.exercises[nextIdx])}
+              />
+            </Group>
+          )}
           <button
             type="button"
             className="btn btn-quiet"
@@ -820,6 +959,12 @@ function WorkoutFlow({ onFinish }) {
   // next target was derived from, so the two lines on screen cannot disagree.
   const lastWeight = heaviestDone(current.lastSets)
   const lastReps = (current.lastSets || []).map((s) => (s && s.done ? s.reps : '—')).join(', ')
+  const plates = platesOnly(exDef)
+  // A warm-up ramp only before the first set of the session's first lift, and only on a
+  // barbell, where the per-side arithmetic is what you are doing at the rack anyway. Ticks
+  // live in this component and nowhere else: a warm-up is never a set and never reaches a log.
+  const warmup =
+    plates && exIdx === 0 && setIdx === 0 && logged.length === 0 ? warmupSteps(set.weightKg) : []
 
   return (
     <>
@@ -856,7 +1001,28 @@ function WorkoutFlow({ onFinish }) {
             Last time {lastWeight} kg · {lastReps}
           </p>
         )}
-        {weightHint(exDef) && <p className="weight-hint">{weightHint(exDef)}</p>}
+        {/* The reason, frozen at startWorkout, so it cannot move while you lift. It was
+            behind "Why this target?", and it is the sentence that says what the set is for. */}
+        {current.reason && <p className="logger-reason">{current.reason}</p>}
+        {/* A barbell's per-side figure replaces this line under the weight stepper below. */}
+        {!plates && weightHint(exDef) && <p className="weight-hint">{weightHint(exDef)}</p>}
+
+        {warmup.length > 0 && (
+          <div className="warmup" aria-label="Warm-up">
+            <span className="warmup-label">Warm-up · a side</span>
+            {warmup.map((w, i) => (
+              <button
+                type="button"
+                key={i}
+                className="chip warmup-step tnum"
+                data-active={warmedUp.includes(i)}
+                onClick={() => setWarmedUp(warmedUp.includes(i) ? warmedUp.filter((x) => x !== i) : [...warmedUp, i])}
+              >
+                {w.sideKg == null ? 'Bar' : w.sideKg} × {w.reps}
+              </button>
+            ))}
+          </div>
+        )}
 
         {logged.length > 0 && (
           <div className="session-strip">
@@ -893,6 +1059,7 @@ function WorkoutFlow({ onFinish }) {
             label="Weight"
             value={set.weightKg}
             unit="kg"
+            note={plates && set.weightKg != null ? `Plates only · ${perSide(set.weightKg)} a side` : null}
             onStep={(d) => stepWeight(setIdx, d)}
             onCommit={(v) => setWeight(setIdx, v)}
           />
@@ -927,11 +1094,10 @@ function WorkoutFlow({ onFinish }) {
         </div>
 
         <button type="button" className="btn btn-quiet" onClick={() => setWhyOpen(!whyOpen)}>
-          Why this target?
+          How to do it
         </button>
         {whyOpen && (
           <div className="why-card">
-            <p className="progression-reason">{current.reason}</p>
             <ExerciseMedia exercise={exDef} gif />
             {exDef && exDef.steps && exDef.steps.length > 0 && (
               <ol className="steps">

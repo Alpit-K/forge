@@ -93,8 +93,22 @@ function liftSuggestion(state, reason, now = new Date()) {
 }
 
 const CARDIO_COPY = {
-  easy: { title: 'Easy cardio', detail: 'Conversational effort — you can hold a sentence' },
-  long: { title: 'Long cardio', detail: 'Steady, and longer than last week' },
+  easy: { title: 'Easy', detail: 'Conversational effort — you can hold a sentence' },
+  long: { title: 'Long', detail: 'Steady, and longer than last week' },
+}
+
+// What the card calls the session. The sport is the user's own setting, never inferred from
+// what was logged last — inferring it would mean a block of rides could never suggest a run
+// again. Anything unrecognised reads as plain "cardio".
+const SPORT_NOUN = { run: 'run', cycle: 'ride', swim: 'swim', walk: 'walk' }
+
+export function sportNoun(sport) {
+  return SPORT_NOUN[sport] || null
+}
+
+function withSport(rec, sport) {
+  if (rec.kind !== 'cardio') return rec
+  return { ...rec, sport, title: `${rec.title} ${sportNoun(sport) || 'cardio'}` }
 }
 
 function cardioSuggestion(cardioKind, reason) {
@@ -175,7 +189,7 @@ export function recommend(state, now = new Date()) {
   const liftsSpare = liftsShort > 0 && remaining.lift === liftsShort
   const cardioSpare = cardioShort > 0 && remaining.cardio === cardioShort
   const days = (n) => `${n} ${n === 1 ? 'day' : 'days'}`
-  const weekSoFar = `${week.lifts} lifts · ${week.cardio} cardio this week`
+  const weekSoFar = `${week.lifts} ${week.lifts === 1 ? 'lift' : 'lifts'} · ${week.cardio} cardio this week`
 
   const decide = () => {
     if (planned === 'lift') {
@@ -251,7 +265,7 @@ export function recommend(state, now = new Date()) {
     return rest('Your rest day, and the week is on track.', weekSoFar)
   }
 
-  return { ...decide(), planned, week, rolling }
+  return { ...withSport(decide(), settings.cardioSport), planned, week, rolling }
 }
 
 // What is coming, for the days the card above has nothing left to offer — after you have

@@ -6,10 +6,12 @@ import {
   activityName,
   intensityLabel,
   runTypeLabel,
+  rideTypeLabel,
   matchFormatLabel,
 } from '../lib/activities.js'
 import { fmtDistance } from '../lib/format.js'
 import Sheet from './Sheet.jsx'
+import { WeekPlanner } from '../screens/Settings.jsx'
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const WEEKS = 6
@@ -37,6 +39,7 @@ function dayDetail(day) {
         activityName(a),
         matchFormatLabel(a.matchFormat),
         runTypeLabel(a.runType),
+        rideTypeLabel(a.rideType),
         intensityLabel(a.intensity),
         typeof a.distanceKm === 'number' ? fmtDistance(a.distanceKm) : null,
       ]
@@ -136,6 +139,19 @@ export default function WeekSheet({ onClose }) {
         ))}
       </div>
       <p className="consistency-note">Sessions per week, oldest first.</p>
+
+      {/* The shape Today reads, editable where you are looking when its suggestion surprises
+          you. The same planner Settings draws, writing the same setting. */}
+      <div className="caption">Your usual week</div>
+      <div className="list">
+        <WeekPlanner
+          shape={settings.weekShape}
+          onChange={(i, kind) =>
+            useStore.getState().setSetting('weekShape', settings.weekShape.map((k, j) => (j === i ? kind : k)))
+          }
+        />
+      </div>
+      <p className="consistency-note">Tap a day to cycle it: lift, cardio, long, rest.</p>
     </Sheet>
   )
 }

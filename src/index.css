@@ -746,7 +746,9 @@ button.row:active {
 .summary-stat .label,
 .big-stepper-label,
 .wk-day-name,
-.planner-name {
+.planner-name,
+.warmup-label,
+.cal-dow {
   font-size: var(--fs-caption);
   font-weight: 600;
   text-transform: uppercase;
@@ -871,6 +873,8 @@ button.row:active {
    within a day keep the inset separator, so the two boundaries read differently. */
 .timeline-day {
   padding: var(--sp-3) var(--gutter) 0;
+  /* Clears the collapsed nav bar when the calendar jumps to a day. */
+  scroll-margin-top: 64px;
 }
 
 .timeline-day:not(:first-child) {
@@ -1037,6 +1041,18 @@ button.row:active {
   font-weight: 600;
   text-align: right;
   min-width: 0;
+}
+
+.ex-session-more {
+  display: block;
+  font-size: var(--fs-micro);
+  font-weight: 400;
+  color: var(--label-secondary);
+  margin-top: 2px;
+}
+
+.ex-session-more:empty {
+  display: none;
 }
 
 /* The exercise name in a workout's set table is the way into that exercise's full record,
@@ -1207,6 +1223,31 @@ button.row:active {
   margin: var(--sp-1) 0 0;
 }
 
+/* The frozen reason, under the evidence for it. Label colour rather than secondary: of the
+   three lines it is the one that says what this set is for. */
+.logger-reason {
+  color: var(--label);
+  font-size: var(--fs-meta);
+  margin: var(--sp-1) 0 0;
+}
+
+/* Set 1 of the first barbell lift only, in the slack the session strip takes from set 2 on.
+   Chips, because each step is something you tick off at the rack. */
+.warmup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--sp-2);
+  row-gap: 12px;
+  margin-top: var(--sp-3);
+}
+
+/* On its own line: beside the chips it pushed the third one onto a second row, which cost a
+   whole chip's height where the label costs a caption's. */
+.warmup-label {
+  flex-basis: 100%;
+}
+
 /* One line per set, under the exercise's row in its card — History's editor, the only
    place the table is left. Columns: number, kg, reps, tick. */
 .set-table {
@@ -1332,6 +1373,7 @@ button.row:active {
    untether the ring from the target it is counting down towards. */
 .rest-main {
   flex: 1;
+  align-self: stretch;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1455,6 +1497,45 @@ button.row:active {
   margin-top: var(--sp-1);
 }
 
+/* The set just logged, on the rest screen, where a mis-entered rep is noticed. A surface you
+   press, so it changes fill rather than scaling. */
+.just-logged {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: 48px;
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--bg-elevated);
+  border: none;
+  border-radius: var(--radius);
+  color: var(--label);
+  font: inherit;
+  cursor: pointer;
+}
+
+.just-logged:active {
+  background: var(--bg-tertiary);
+}
+
+.just-logged-label {
+  flex: 1;
+  text-align: left;
+  font-size: var(--fs-micro);
+  color: var(--label-secondary);
+}
+
+.just-logged-value {
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+
+.just-logged-edit {
+  font-size: var(--fs-meta);
+  color: var(--accent);
+}
+
 .rest-actions {
   display: flex;
   align-self: stretch;
@@ -1469,10 +1550,8 @@ button.row:active {
   padding: 8px 4px;
 }
 
-.next-up {
-  color: var(--label-secondary);
-  font-size: var(--fs-meta);
-  padding: var(--sp-4) 0;
+.next-up-row {
+  margin-top: var(--sp-3);
 }
 
 /* ---- Summary ---- */
@@ -1499,6 +1578,22 @@ button.row:active {
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--label-secondary);
+}
+
+/* Facts about the session beside the ones above: the last time it was done, and the week.
+   No colour and no arrow — compared, not scored. */
+.summary-context {
+  color: var(--label-secondary);
+  font-size: var(--fs-micro);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding-bottom: var(--sp-3);
+}
+
+.summary-context p {
+  margin: 0;
 }
 
 .summary-note {
@@ -1819,6 +1914,125 @@ button.row:active {
   margin-top: 8px;
 }
 
+/* ---- A trend that says what it plots ---- */
+/* A dot per session, the range at the left, the first and last dates beneath, and a readout
+   above that follows the tapped session. The line is drawn the natural way up everywhere. */
+.chart {
+  margin-top: var(--sp-2);
+}
+
+.chart-readout {
+  font-size: var(--fs-micro);
+  color: var(--label-secondary);
+  margin-bottom: var(--sp-2);
+}
+
+.chart-readout b {
+  color: var(--label);
+  font-size: var(--fs-meta);
+}
+
+.chart-body {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.chart-range {
+  flex: 0 0 56px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-size: var(--fs-caption);
+  color: var(--label-secondary);
+  text-align: right;
+  padding: 0 0 2px;
+}
+
+.chart-range span:only-child {
+  margin: auto 0;
+}
+
+.chart-plot {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 64px;
+}
+
+.chart-plot .spark {
+  height: 100%;
+  margin-top: 0;
+}
+
+.chart-dot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--cat-lift);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.chart[data-cat='cardio'] .chart-dot {
+  background: var(--cat-cardio);
+}
+
+/* The picked session is a larger dot ringed in the label colour, so it reads in greyscale. */
+.chart-dot[data-picked] {
+  width: 11px;
+  height: 11px;
+  outline: 2px solid var(--label);
+}
+
+.chart-hits {
+  position: absolute;
+  inset: -8px 0;
+  display: flex;
+}
+
+.chart-hits button {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.chart-dates {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--fs-caption);
+  color: var(--label-secondary);
+  margin-top: var(--sp-1);
+  padding-left: calc(56px + var(--sp-2));
+}
+
+.chart-note {
+  font-size: var(--fs-micro);
+  color: var(--label-secondary);
+  margin: var(--sp-1) 0 0;
+}
+
+/* A row's trend: the same Sparkline, cut to a column at the row's end. Decorative, as the
+   full-width one is — the subtitle beside it carries the numbers. */
+.row-spark {
+  flex: 0 0 72px;
+  align-self: center;
+}
+
+.row-spark .spark {
+  height: 26px;
+  margin-top: 0;
+}
+
+.mine-toggle {
+  align-self: flex-start;
+  padding: var(--sp-2) 0;
+}
+
 /* ---- Motion ---- */
 /* Every rule here answers a tap. There are no entrance animations, no scroll reveals and no
    hover effects: motion says what changed, and a screen that moves on its own is a screen
@@ -1995,6 +2209,16 @@ button.row:active,
   background: var(--bg-tertiary);
 }
 
+/* In a sheet the ground is already --bg-elevated, so the button would vanish into it; it
+   steps up one surface, and its press goes back to the sheet's own. */
+.sheet .big-stepper-btn {
+  background: var(--bg-tertiary);
+}
+
+.sheet .big-stepper-btn:active {
+  background: var(--bg-elevated);
+}
+
 .big-stepper-value {
   flex: 1;
   min-width: 0;
@@ -2018,6 +2242,15 @@ button.row:active,
 
 /* The one 20px/600 style that does NOT take the metric tracking: `kg` is a word sitting
    beside a 56px number, and -0.01em on two letters only pulls them into the digits. */
+/* The per-side figure under a barbell's weight. It replaces the "plates only" hint line, so
+   the logger's height budget is unchanged. */
+.big-stepper-note {
+  text-align: center;
+  font-size: var(--fs-micro);
+  color: var(--label-secondary);
+  margin-top: var(--sp-1);
+}
+
 .big-stepper-unit {
   font-size: var(--fs-title);
   font-weight: 600;
@@ -2416,6 +2649,37 @@ button.row:active,
   font-weight: 600;
   letter-spacing: -0.01em;
   flex-shrink: 0;
+}
+
+/* The cardio card's reference is a last session, which carries three facts where a lift
+   carries one, so its value drops to body size to share the line with its label. */
+/* Two lines, label over value: a last session carries three facts where a lift's target
+   carries one, and side by side the label was cut to "Last easy ride · …". */
+.coach-last {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 0.5px solid var(--separator);
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-3);
+}
+
+.coach-last-value {
+  font-size: var(--fs-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.coach-ceiling {
+  font-size: var(--fs-micro);
+  color: var(--label-secondary);
+  margin-top: var(--sp-2);
+}
+
+.coach-ref:not(:has(.coach-last)) .coach-ceiling {
+  border-top: 0.5px solid var(--separator);
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-3);
 }
 
 .coach-card .btn-primary {
@@ -3139,6 +3403,11 @@ button.row:active,
   transform: rotate(180deg);
 }
 
+.cov-plan-label {
+  text-align: center;
+  padding-bottom: 0;
+}
+
 .cov-figures {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -3221,4 +3490,101 @@ button.row:active,
 /* A fact, not a control — the chip's shape without its press. */
 .cov-untrained {
   cursor: default;
+}
+
+/* ---- History: the month calendar ---- */
+/* The one place empty days are drawn (owner's decision, 2026-10-29), and they are drawn
+   plain: a number and nothing else. A logged day carries the week strip's code — a square
+   for a lift, a circle for cardio, each in its category tint — so the two read as one
+   vocabulary and a day with both carries both. Nothing marks a planned day. It sits in a
+   sheet, so seven columns come to 51 px on a 393 px phone and every day clears 44 pt
+   without an overhang. */
+.cal {
+  padding-bottom: var(--sp-3);
+}
+
+.cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cal-head .btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.cal-title {
+  font-weight: 600;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  text-align: center;
+}
+
+.cal-dow {
+  padding: var(--sp-1) 0 var(--sp-2);
+}
+
+.cal-day {
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--label-secondary);
+  font: inherit;
+  padding: 0;
+}
+
+button.cal-day {
+  color: var(--label);
+  cursor: pointer;
+}
+
+button.cal-day:active {
+  background: var(--bg-tertiary);
+}
+
+.cal-num {
+  font-size: var(--fs-meta);
+  line-height: 1;
+}
+
+.cal-day[data-today] .cal-num {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.cal-marks {
+  display: flex;
+  gap: 3px;
+  height: 6px;
+}
+
+.cal-mark {
+  width: 6px;
+  height: 6px;
+}
+
+.cal-mark[data-kind='lift'] {
+  background: var(--cat-lift);
+}
+
+.cal-mark[data-kind='cardio'] {
+  background: var(--cat-cardio);
+  border-radius: 50%;
+}
+
+/* A note on a timeline row: one line, cut with an ellipsis. The sheet holds the whole of it. */
+.row-label .subtitle-note {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

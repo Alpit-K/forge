@@ -13,6 +13,7 @@ import {
   isBlockComplete,
   sessionsDone,
   lastDoneByRotation,
+  typicalMinutes,
   nextUnfinished,
   byFinish,
   blockWindow,
@@ -168,6 +169,42 @@ describe('lastDoneByRotation', () => {
       '2026-08-03T10:00:00.000Z',
       null,
     ])
+  })
+})
+
+describe('typicalMinutes', () => {
+  const log = (rotationIndex, minutes, extra = {}) => ({
+    rotationIndex,
+    startedAt: '2026-08-01T10:00:00.000Z',
+    finishedAt: new Date(Date.parse('2026-08-01T10:00:00.000Z') + minutes * 60000).toISOString(),
+    ...extra,
+  })
+
+  it('is the median of the slot\'s last three sessions', () => {
+    const workouts = [log(0, 90), log(0, 16), log(1, 50), log(0, 38), log(0, 28)]
+    expect(typicalMinutes(workouts, 0, 3)).toBe(28)
+  })
+
+  it('averages the middle two when only two exist', () => {
+    expect(typicalMinutes([log(2, 30), log(2, 41)], 2, 3)).toBe(36)
+  })
+
+  it('is null for a slot never trained', () => {
+    expect(typicalMinutes([log(0, 30)], 1, 3)).toBeNull()
+  })
+
+  // The same slot rule lastDoneByRotation reads: a custom workout files under no slot, a
+  // pre-picker log under sessionIndex % rotationCount.
+  it('skips freeform logs and keeps the pre-picker fallback', () => {
+    const workouts = [
+      log(undefined, 40, { sessionIndex: 4 }),
+      log(null, 99, { freeform: true, sessionIndex: 1 }),
+    ]
+    expect(typicalMinutes(workouts, 1, 3)).toBe(40)
+  })
+
+  it('leaves out a log with no usable times', () => {
+    expect(typicalMinutes([log(0, 30), { rotationIndex: 0, startedAt: null, finishedAt: null }], 0, 3)).toBe(30)
   })
 })
 

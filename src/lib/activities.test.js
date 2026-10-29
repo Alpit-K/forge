@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   RUN_TYPES,
+  RIDE_TYPES,
   runTypeLabel,
+  rideTypeLabel,
   takesDistance,
   takesMatchFormat,
   matchFormatLabel,
@@ -14,6 +16,12 @@ describe('run types', () => {
   // drift for months with nothing on screen looking wrong.
   it('carries no intensity — kind and effort are chosen independently', () => {
     for (const t of RUN_TYPES) expect(t.intensity).toBeUndefined()
+    for (const t of RIDE_TYPES) expect(t.intensity).toBeUndefined()
+  })
+
+  it('labels a ride type and tolerates a missing one', () => {
+    expect(rideTypeLabel('long')).toBe('Long')
+    expect(rideTypeLabel(undefined)).toBe(null)
   })
 
   // Records written before run types existed carry none, and a type the vocabulary later

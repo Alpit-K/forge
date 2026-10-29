@@ -56,6 +56,40 @@ export function weightHint(exercise) {
   return null
 }
 
+// Kit whose logged weight is the plates alone, so half of it is what goes on each end.
+export function platesOnly(exercise) {
+  return Boolean(exercise && TOTAL_EQUIPMENT.includes(exercise.equipment))
+}
+
+// The smallest plate in the gym. Every barbell step is 2.5 kg, so half of any logged weight
+// is a multiple of this and can always be loaded — which is why no plate list is needed.
+const SMALLEST_PLATE = 1.25
+
+export function perSide(kg) {
+  return kg == null ? null : Math.round((kg / 2) * 100) / 100
+}
+
+// A warm-up ramp to the day's weight, per side and on the smallest plate's grid: the bar
+// alone, then half, then three quarters. Shown before the first set and never stored, so
+// nothing here can reach a log or a target. A step that rounds to nothing, to the working
+// weight itself, or onto the step before it is dropped rather than shown twice.
+const WARMUP = [
+  { share: 0.5, reps: 5 },
+  { share: 0.75, reps: 3 },
+]
+
+export function warmupSteps(kg) {
+  const side = perSide(kg)
+  if (side == null || side <= 0) return []
+  const steps = [{ sideKg: null, reps: 10 }]
+  for (const { share, reps } of WARMUP) {
+    const s = Math.round((side * share) / SMALLEST_PLATE) * SMALLEST_PLATE
+    if (s <= 0 || s >= side || s === steps[steps.length - 1].sideKg) continue
+    steps.push({ sideKg: s, reps })
+  }
+  return steps
+}
+
 // Swap candidates: the same target muscle first, then the same body part, and within each an
 // exercise you have logged before ahead of one you have not — a swap takes the incoming
 // exercise's own history, so those arrive with a real weight. Equipment is deliberately not

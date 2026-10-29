@@ -11,6 +11,7 @@ import {
   startOfDay,
   groupByDay,
   recentWeeks,
+  monthDays,
 } from './week.js'
 
 // Local dates throughout. The suite pins TZ=Europe/London (vite.config.js) precisely so the
@@ -253,5 +254,37 @@ describe('recentWeeks', () => {
   it('includes the current week even though it is still running', () => {
     const weeks = recentWeeks([lift(iso(2026, 9, 4))], [], now, 2)
     expect(weeks[1].lifts).toBe(1)
+  })
+})
+
+describe('monthDays', () => {
+  it('covers the month in whole Monday-first weeks', () => {
+    // October 2026 starts on a Thursday and ends on a Saturday.
+    const days = monthDays([], [], local(2026, 10, 15), local(2026, 10, 29))
+    expect(days).toHaveLength(35)
+    expect(days[0].date.toDateString()).toBe('Mon Sep 28 2026')
+    expect(days[34].date.toDateString()).toBe('Sun Nov 01 2026')
+    expect(days.filter((d) => d.inMonth)).toHaveLength(31)
+  })
+
+  it('stops at the Sunday when the month ends on one', () => {
+    // May 2026 ends on Sunday 31st, so no week of June is drawn.
+    const days = monthDays([], [], local(2026, 5, 1))
+    expect(days[days.length - 1].date.toDateString()).toBe('Sun May 31 2026')
+  })
+
+  it('counts lifts and cardio by local day, and marks today', () => {
+    // 23:30 on a BST Saturday is Saturday's, not Sunday's.
+    const days = monthDays(
+      [lift(iso(2026, 10, 24, 23, 30))],
+      [act(iso(2026, 10, 26, 7)), act(iso(2026, 10, 26, 19))],
+      local(2026, 10, 1),
+      local(2026, 10, 29, 9),
+    )
+    const on = (d) => days.find((x) => x.inMonth && x.date.getDate() === d)
+    expect(on(24).lifts).toBe(1)
+    expect(on(25).lifts).toBe(0)
+    expect(on(26).cardio).toBe(2)
+    expect(days.filter((d) => d.isToday).map((d) => d.date.getDate())).toEqual([29])
   })
 })

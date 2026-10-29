@@ -338,3 +338,33 @@ describe('a shortfall the days ahead already cover', () => {
     expect(r.kind).toBe('cardio')
   })
 })
+
+describe('the card names the current sport', () => {
+  const sport = (cardioSport) => state({ settings: { ...createInitialState().settings, cardioSport } })
+
+  it('calls an easy day a ride when cycling and a run when running', () => {
+    expect(recommend(sport('cycle'), local(...TUE)).title).toBe('Easy ride')
+    expect(recommend(sport('run'), local(...TUE)).title).toBe('Easy run')
+  })
+
+  it('names the long day the same way', () => {
+    expect(recommend(sport('cycle'), local(...SUN)).title).toBe('Long ride')
+  })
+
+  it('falls back to cardio for a sport it does not know', () => {
+    expect(recommend(sport(undefined), local(...TUE)).title).toBe('Easy cardio')
+  })
+
+  it('leaves a lift and a rest alone', () => {
+    expect(recommend(sport('cycle'), local(...MON)).title).not.toMatch(/ride/)
+    expect(recommend(sport('cycle'), local(...THU)).title).toBe('Rest')
+  })
+})
+
+describe('the rest card counts the week in words', () => {
+  it('says one lift, not one lifts', () => {
+    const r = recommend(state({ workouts: [lift(iso(...MON))] }), local(...THU))
+    expect(r.kind).toBe('rest')
+    expect(r.detail).toBe('1 lift · 0 cardio this week')
+  })
+})

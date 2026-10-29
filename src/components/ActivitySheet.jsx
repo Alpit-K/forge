@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useStore } from '../store.js'
 import Sheet from './Sheet.jsx'
 import Icon from './Icon.jsx'
 import { Group, Row, Section } from './List.jsx'
@@ -6,6 +7,7 @@ import {
   ACTIVITY_TYPES,
   INTENSITIES,
   RUN_TYPES,
+  RIDE_TYPES,
   MATCH_FORMATS,
   takesDistance,
   takesMatchFormat,
@@ -21,7 +23,10 @@ import { toDateInput, withDate, notAfterToday } from '../lib/dateInput.js'
 // `activity` decides whether this is an edit — a preset must not read as one.
 export default function ActivitySheet({ activity, preset, onSave, onDelete, onOpenTrend, onClose }) {
   const init = activity || preset || null
-  const [type, setType] = useState(init ? init.type || 'run' : 'run')
+  // A new log opens on the current sport from Settings — the user's own choice, never the
+  // last thing logged, which would stop a block of rides from ever offering a run again.
+  const cardioSport = useStore((s) => s.settings.cardioSport)
+  const [type, setType] = useState((init && init.type) || cardioSport || 'run')
   const [label, setLabel] = useState(init ? init.label || '' : '')
   const [at, setAt] = useState(init && init.at ? init.at : new Date().toISOString())
   const [minutes, setMinutes] = useState(init && init.minutes != null ? String(init.minutes) : '')
@@ -30,6 +35,7 @@ export default function ActivitySheet({ activity, preset, onSave, onDelete, onOp
   )
   const [intensity, setIntensity] = useState(init ? init.intensity || null : null)
   const [runType, setRunType] = useState(init ? init.runType || null : null)
+  const [rideType, setRideType] = useState(init ? init.rideType || null : null)
   const [matchFormat, setMatchFormat] = useState(init ? init.matchFormat || null : null)
   const [note, setNote] = useState(init ? init.note || '' : '')
   const [hr, setHr] = useState(init && init.avgHr != null ? String(init.avgHr) : '')
@@ -75,6 +81,13 @@ export default function ActivitySheet({ activity, preset, onSave, onDelete, onOp
   // recovery guard.
   const isRun = type === 'run'
   const showFormat = takesMatchFormat(type)
+  const kindRow = isRun
+    ? { label: 'Kind of run', options: RUN_TYPES, value: runType, set: setRunType }
+    : type === 'cycle'
+      ? { label: 'Kind of ride', options: RIDE_TYPES, value: rideType, set: setRideType }
+      : showFormat
+        ? { label: 'Format', options: MATCH_FORMATS, value: matchFormat, set: setMatchFormat }
+        : null
 
   // Shown as you type, from the two numbers actually entered. It is the number that tells
   // you whether the run was what you meant it to be, and it was previously only visible
@@ -96,6 +109,8 @@ export default function ActivitySheet({ activity, preset, onSave, onDelete, onOp
       // Cleared with distance when the type stops being a run, for the same reason: a
       // mislogged run switched to tennis must not stay tagged "Intervals".
       runType: isRun ? runType : null,
+      // The same rule for a ride's kind: cleared on the way out of a ride.
+      rideType: type === 'cycle' ? rideType : null,
       matchFormat: showFormat ? matchFormat : null,
       intensity,
       avgHr: hrEntered ? bpm : null,
@@ -136,6 +151,7 @@ export default function ActivitySheet({ activity, preset, onSave, onDelete, onOp
               // and is left alone: it describes every activity, so carrying it across a
               // type change is correct, not stale.
               if (t.id !== 'run') setRunType(null)
+              if (t.id !== 'cycle') setRideType(null)
               if (!takesMatchFormat(t.id)) setMatchFormat(null)
             }}
           >
@@ -147,20 +163,26 @@ export default function ActivitySheet({ activity, preset, onSave, onDelete, onOp
         ))}
       </div>
 
-      {isRun && (
-        <div className="chip-row">
-          {RUN_TYPES.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              className="chip"
-              data-active={runType === t.id}
-              onClick={() => setRunType(runType === t.id ? null : t.id)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+      {/* The second row describes the activity just chosen, so it changes with it: a run's
+          kind, a ride's kind, tennis's format, and nothing for a type with no vocabulary.
+          Labelled, or the kinds read as more activity types. Tapping the active chip clears it. */}
+      {kindRow && (
+        <>
+          <Section>{kindRow.label}</Section>
+          <div className="chip-row">
+            {kindRow.options.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className="chip"
+                data-active={kindRow.value === t.id}
+                onClick={() => kindRow.set(kindRow.value === t.id ? null : t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </>
       )}
 
       <Group>
@@ -236,21 +258,6 @@ export default function ActivitySheet({ activity, preset, onSave, onDelete, onOp
       {pace && <p className="sheet-pace tnum">{pace}</p>}
 
       <Section>How it went</Section>
-      {showFormat && (
-        <div className="chip-row">
-          {MATCH_FORMATS.map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              className="chip"
-              data-active={matchFormat === f.id}
-              onClick={() => setMatchFormat(matchFormat === f.id ? null : f.id)}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-      )}
 
       {/* Tapping the active chip clears it: a tag applied by accident has to be removable,
           and untagged is a real state the week readout and the coach both depend on. */}

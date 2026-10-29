@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store.js'
 import {
   blockWeightChanges,
@@ -10,20 +10,21 @@ import {
   sessionsDone,
   isBlockComplete,
 } from '../engine/session.js'
-import { groupByDay } from '../engine/week.js'
+import { groupByDay, monthDays } from '../engine/week.js'
 import { getExercise, exerciseName } from '../lib/exercises.js'
 import {
   fmtDate,
   fmtDateTime,
   fmtDayHeading,
   fmtActivityCount,
+  fmtCount,
   fmtDistance,
   fmtRate,
   fmtBlockChange,
   fmtHr,
   fmtWalkBreaks,
 } from '../lib/format.js'
-import { ACTIVITY_TYPES, activityName, intensityLabel, runTypeLabel, matchFormatLabel } from '../lib/activities.js'
+import { ACTIVITY_TYPES, activityName, intensityLabel, runTypeLabel, rideTypeLabel, matchFormatLabel } from '../lib/activities.js'
 import NavBar from '../components/NavBar.jsx'
 import { Group, Row, Section } from '../components/List.jsx'
 import { Thumb, ActivityThumb } from '../components/ExerciseImage.jsx'
@@ -116,7 +117,7 @@ function timelineRows(days, currentBlock, includeBlocks = true) {
       prevBlock = block
       if (!headed) {
         headed = true
-        rows.push({ type: 'day', key: `day-${day.key}-${block}`, date: day.date })
+        rows.push({ type: 'day', key: `day-${day.key}-${block}`, date: day.date, blockIndex: block })
       }
       if (!run) {
         run = { type: 'items', key: `items-${item.data.id}`, items: [] }
@@ -264,8 +265,8 @@ function ActivityRow({ activity, onSelect }) {
     // shows format and intensity, and everything else just its intensity. Runs logged before
     // types existed still read their intensity alone.
     runTypeLabel(activity.runType),
+    rideTypeLabel(activity.rideType),
     intensityLabel(activity.intensity),
-    activity.note,
   ]
     .filter(Boolean)
     .join(' · ')
@@ -275,6 +276,9 @@ function ActivityRow({ activity, onSelect }) {
       <div className="row-label">
         <div className="title">{activityName(activity)}</div>
         {detail && <div className="subtitle tnum">{detail}</div>}
+        {/* A note is the one free-text field on a row, and run into the facts above it, one
+            sentence made the row five lines tall. One line here; the sheet holds the rest. */}
+        {activity.note && <div className="subtitle subtitle-note">{activity.note}</div>}
       </div>
       <span className="row-value metric">{activity.minutes} min</span>
       <span className="row-chevron">
@@ -384,6 +388,108 @@ function cardsBetweenBlocks(rows) {
   return out
 }
 
+const DOW = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+
+// A month of what happened, in a sheet behind the calendar button. Owner's decision
+// (2026-10-29): this is the one place in the app that draws empty days, because a calendar
+// cannot be read without them. It draws them plain and draws nothing for what the week shape
+// asked for — there is no planned, due or missed state here, only a lift (square) or cardio
+// (circle) where one was logged, the same shape-and-tint code as Today's week strip. The
+// timeline still leaves empty days out. The sheet stays open while you page through months;
+// tapping a day closes it and jumps there.
+function MonthCalendar({ workouts, activities, onPick }) {
+  const now = new Date()
+  const current = new Date(now.getFullYear(), now.getMonth(), 1)
+  const [month, setMonth] = useState(current)
+  const first = new Date(
+    Math.min(
+      ...workouts.map((w) => Date.parse(w.finishedAt)),
+      ...activities.map((a) => Date.parse(a.at)),
+      current.getTime(),
+    ),
+  )
+  const earliest = new Date(first.getFullYear(), first.getMonth(), 1)
+  const days = monthDays(workouts, activities, month, now)
+  const step = (n) => setMonth(new Date(month.getFullYear(), month.getMonth() + n, 1))
+
+  return (
+    <div className="cal">
+      <div className="cal-head">
+        <button type="button" className="btn" aria-label="Earlier month" disabled={month <= earliest} onClick={() => step(-1)}>
+          <span className="cov-back">
+            <Icon name="chevron" size={18} />
+          </span>
+        </button>
+        <span className="cal-title">{month.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}</span>
+        <button type="button" className="btn" aria-label="Later month" disabled={month >= current} onClick={() => step(1)}>
+          <Icon name="chevron" size={18} />
+        </button>
+      </div>
+      <div className="cal-grid">
+        {DOW.map((d, i) => (
+          <span key={`dow-${i}`} className="cal-dow">
+            {d}
+          </span>
+        ))}
+        {days.map((d) => {
+          if (!d.inMonth) return <span key={d.date.getTime()} className="cal-day" aria-hidden="true" />
+          const inner = (
+            <>
+              <span className="cal-num tnum">{d.date.getDate()}</span>
+              <span className="cal-marks">
+                {d.lifts > 0 && <span className="cal-mark" data-kind="lift" />}
+                {d.cardio > 0 && <span className="cal-mark" data-kind="cardio" />}
+              </span>
+            </>
+          )
+          if (d.lifts + d.cardio === 0) {
+            return (
+              <span key={d.date.getTime()} className="cal-day" data-today={d.isToday || undefined}>
+                {inner}
+              </span>
+            )
+          }
+          const what = [
+            d.lifts ? `${d.lifts} ${d.lifts === 1 ? 'workout' : 'workouts'}` : null,
+            d.cardio ? `${d.cardio} ${d.cardio === 1 ? 'activity' : 'activities'}` : null,
+          ]
+            .filter(Boolean)
+            .join(', ')
+          return (
+            <button
+              type="button"
+              key={d.date.getTime()}
+              className="cal-day"
+              data-today={d.isToday || undefined}
+              aria-label={`${d.date.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}: ${what}`}
+              onClick={() => onPick(d.date)}
+            >
+              {inner}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// The timeline's segments with every finished block but the open ones reduced to its marker.
+// A segment belongs to the block marker above it; segments above the first marker are the
+// current block's and always show. Nothing here touches the data — it only stops drawing.
+function collapseOldBlocks(segments, isOpen) {
+  const out = []
+  let hiding = false
+  for (const seg of segments) {
+    if (seg.type === 'block') {
+      hiding = !isOpen(seg.blockIndex)
+      out.push({ ...seg, collapsed: hiding })
+    } else if (!hiding) {
+      out.push(seg)
+    }
+  }
+  return out
+}
+
 export default function History() {
   const workouts = useStore((s) => s.workouts)
   const activities = useStore((s) => s.activities)
@@ -401,11 +507,50 @@ export default function History() {
   const [filter, setFilter] = useState(null)
   // 'new' for a past workout being entered, a workout's id for one being re-timed.
   const [timeSheet, setTimeSheet] = useState(null)
+  // Finished blocks opened by hand. The newest finished block is open without being asked;
+  // anything older shows its summary only, so months of history stay one row per block.
+  const [openBlocks, setOpenBlocks] = useState(() => new Set())
+  const [calendarOpen, setCalendarOpen] = useState(false)
+  // A day the calendar asked to jump to, scrolled to once the render that opens its block
+  // has landed. A ref, not state: it schedules nothing and draws nothing.
+  const jumpTo = useRef(null)
 
-  const rows = useMemo(() => {
-    const items = mergeItems(workouts, activities).filter((item) => matchesFilter(item, filter))
-    return timelineRows(groupByDay(items), progress.blockIndex, filter == null)
-  }, [workouts, activities, filter, progress.blockIndex])
+  const items = useMemo(
+    () => mergeItems(workouts, activities).filter((item) => matchesFilter(item, filter)),
+    [workouts, activities, filter],
+  )
+  const rows = useMemo(
+    () => timelineRows(groupByDay(items), progress.blockIndex, filter == null),
+    [items, filter, progress.blockIndex],
+  )
+  // The calendar shows what the timeline shows, filter included.
+  const calWorkouts = useMemo(() => items.filter((i) => i.kind === 'workout').map((i) => i.data), [items])
+  const calActivities = useMemo(() => items.filter((i) => i.kind === 'activity').map((i) => i.data), [items])
+  const newestFinished = rows.find((r) => r.type === 'block')?.blockIndex
+  const isOpen = (blockIndex) => blockIndex === newestFinished || openBlocks.has(blockIndex)
+
+  const pickDay = (date) => {
+    const day = rows.find((r) => r.type === 'day' && r.date.getTime() === date.getTime())
+    if (!day) return
+    setCalendarOpen(false)
+    if (day.blockIndex !== progress.blockIndex && !isOpen(day.blockIndex)) {
+      setOpenBlocks((prev) => new Set(prev).add(day.blockIndex))
+    }
+    jumpTo.current = day.key
+    // A day already on screen re-renders nothing, so the effect below would not run for it.
+    const el = document.getElementById(day.key)
+    if (el) {
+      jumpTo.current = null
+      el.scrollIntoView({ block: 'start' })
+    }
+  }
+
+  useEffect(() => {
+    if (!jumpTo.current) return
+    const el = document.getElementById(jumpTo.current)
+    jumpTo.current = null
+    if (el) el.scrollIntoView({ block: 'start' })
+  })
   const byBlock = useMemo(() => blockWorkouts(workouts), [workouts])
   const blockDone = sessionsDone(workouts, progress.blockIndex)
   const activityCounts = useMemo(() => {
@@ -424,9 +569,16 @@ export default function History() {
       <NavBar
         title="History"
         actions={
-          <button type="button" className="btn" aria-label="Settings" onClick={() => setSettingsOpen(true)}>
-            <Icon name="gear" size={22} />
-          </button>
+          <>
+            {rows.length > 0 && (
+              <button type="button" className="btn" aria-label="Calendar" onClick={() => setCalendarOpen(true)}>
+                <Icon name="calendar" size={22} />
+              </button>
+            )}
+            <button type="button" className="btn" aria-label="Settings" onClick={() => setSettingsOpen(true)}>
+              <Icon name="gear" size={22} />
+            </button>
+          </>
         }
       />
       <div className="screen-body">
@@ -493,19 +645,34 @@ export default function History() {
                 where the walk crosses out of it. Days with nothing in them are absent
                 rather than drawn as rest: this is a record of what happened, and padding it
                 with what did not is how a log starts keeping score. */}
-            {cardsBetweenBlocks(rows).map((seg) =>
+            {collapseOldBlocks(cardsBetweenBlocks(rows), isOpen).map((seg) =>
               seg.type === 'block' ? (
-                <BlockMarker
-                  key={seg.key}
-                  blockIndex={seg.blockIndex}
-                  workouts={byBlock.get(seg.blockIndex) || []}
-                  activityCount={fmtActivityCount(activityCounts.get(seg.blockIndex) || 0)}
-                />
+                <Fragment key={seg.key}>
+                  <BlockMarker
+                    blockIndex={seg.blockIndex}
+                    workouts={byBlock.get(seg.blockIndex) || []}
+                    activityCount={fmtActivityCount(activityCounts.get(seg.blockIndex) || 0)}
+                  />
+                  {seg.collapsed && (
+                    <Group>
+                      <Row
+                        title={`Show ${[
+                          fmtCount((byBlock.get(seg.blockIndex) || []).length, 'session'),
+                          fmtActivityCount(activityCounts.get(seg.blockIndex) || 0),
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}`}
+                        chevron
+                        onClick={() => setOpenBlocks((prev) => new Set(prev).add(seg.blockIndex))}
+                      />
+                    </Group>
+                  )}
+                </Fragment>
               ) : (
                 <Group key={seg.key}>
                   {seg.rows.map((row) =>
                     row.type === 'day' ? (
-                      <div key={row.key} className="timeline-day">
+                      <div key={row.key} id={row.key} className="timeline-day">
                         {fmtDayHeading(row.date)}
                       </div>
                     ) : (
@@ -534,6 +701,11 @@ export default function History() {
       </div>
 
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
+      {calendarOpen && (
+        <Sheet title="Calendar" onClose={() => setCalendarOpen(false)}>
+          <MonthCalendar workouts={calWorkouts} activities={calActivities} onPick={pickDay} />
+        </Sheet>
+      )}
       {detail && (
         <WorkoutDetail
           workout={detail}

@@ -29,6 +29,18 @@ function paths(name) {
           <circle cx="12" cy="15" r="1" fill="currentColor" stroke="none" />
         </>
       )
+    // History's month view. The Today tab's frame, but a month of days in it rather than the
+    // one dot, so the two do not read as the same button.
+    case 'calendar':
+      return (
+        <>
+          <rect x="3" y="5" width="18" height="16" rx="3" />
+          <path d="M3 10h18M8 3v4M16 3v4" />
+          {[8, 12, 16].map((cx) =>
+            [14, 18].map((cy) => <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="1" fill="currentColor" stroke="none" />),
+          )}
+        </>
+      )
     case 'plan':
       return (
         <>

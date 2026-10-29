@@ -88,17 +88,43 @@ export function isBlockComplete(done, sessionCount) {
   return done >= sessionCount
 }
 
-// The most recent finish date per rotation slot, for the session picker. Logs written before
-// the rotation was choosable have no rotationIndex; for those it was sessionIndex % length.
+// The rotation slot a log was trained on, or null. Logs written before the rotation was
+// choosable have no rotationIndex; for those it was sessionIndex % length. A custom workout
+// is skipped BEFORE that fallback — a flag check, never a null-rotationIndex check, or a
+// pre-picker log whose slot is still recoverable would be swallowed with it.
+export function slotOf(log, rotationCount) {
+  if (log.freeform) return null
+  const idx = log.rotationIndex ?? log.sessionIndex % rotationCount
+  return idx >= 0 && idx < rotationCount ? idx : null
+}
+
+// The most recent finish date per rotation slot, for the session picker.
 export function lastDoneByRotation(workouts, rotationCount) {
   const last = new Array(rotationCount).fill(null)
   for (const w of workouts) {
-    if (w.freeform) continue
-    const idx = w.rotationIndex ?? w.sessionIndex % rotationCount
-    if (idx < 0 || idx >= rotationCount || !w.finishedAt) continue
+    const idx = slotOf(w, rotationCount)
+    if (idx == null || !w.finishedAt) continue
     if (last[idx] == null || w.finishedAt > last[idx]) last[idx] = w.finishedAt
   }
   return last
+}
+
+// How long a slot usually takes: the median of its last three sessions, in whole minutes,
+// read from the logs on every call. The median, so one session cut short or left running
+// does not move it. A log with no usable times is no evidence and is left out. Null when
+// the slot has never been trained.
+export const TYPICAL_SESSIONS = 3
+
+export function typicalMinutes(workouts, rotationIndex, rotationCount) {
+  const mins = workouts
+    .filter((w) => slotOf(w, rotationCount) === rotationIndex)
+    .slice(-TYPICAL_SESSIONS)
+    .map((w) => durationSeconds(w.startedAt, w.finishedAt) / 60)
+    .filter((m) => m > 0)
+    .sort((a, b) => a - b)
+  if (mins.length === 0) return null
+  const mid = Math.floor(mins.length / 2)
+  return Math.round(mins.length % 2 ? mins[mid] : (mins[mid - 1] + mins[mid]) / 2)
 }
 
 // The heaviest completed set in a list. The session's working weight — see workingWeight()

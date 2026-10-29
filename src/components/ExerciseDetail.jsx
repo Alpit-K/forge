@@ -74,7 +74,10 @@ export default function ExerciseDetail({ exercise }) {
       {recent.length > 0 && (
         <>
           <div className="caption">Recent</div>
-          {history.length > 1 && <Sparkline values={history.map((h) => h.topWeight)} />}
+          <Sparkline
+            format={(kg) => `${kg} kg`}
+            points={history.filter((h) => h.topWeight != null).map((h) => ({ value: h.topWeight, at: h.at }))}
+          />
           <div className="list">
             {recent.map((r) => (
               <div className="ex-session" key={r.at}>

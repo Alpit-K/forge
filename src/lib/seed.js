@@ -50,7 +50,15 @@ export const DEFAULT_SETTINGS = {
   // derived from history by the coach. It is an input to that calculation, not a set of
   // appointments, which is why a day that does not happen is never recorded as missed.
   weekShape: ['lift', 'cardio', 'lift', 'rest', 'lift', 'cardio', 'long'],
+  // The cardio being trained right now — an ACTIVITY_TYPES id. Chosen, never inferred from
+  // the last log, so a block of rides does not stop the app ever offering a run again.
+  cardioSport: 'cycle',
+  // An easy-session heart-rate limit the user rides or runs to, in bpm, or null. Shown on the
+  // coach card and read by nothing else.
+  hrCeiling: null,
 }
+
+export const CARDIO_SPORTS = ['run', 'cycle', 'swim', 'walk']
 
 export const WEEK_SHAPE_KINDS = ['lift', 'cardio', 'long', 'rest']
 

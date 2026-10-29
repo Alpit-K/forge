@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useStore } from '../store.js'
 import { getExercise, exerciseName } from '../lib/exercises.js'
 import { incrementFor } from '../engine/progression.js'
-import { exerciseHistory, stalledAt, STALL_SESSIONS } from '../engine/session.js'
+import { exerciseHistory, stalledAt, STALL_SESSIONS, typicalMinutes } from '../engine/session.js'
 import { plannedSetsPerWeek } from '../engine/muscles.js'
 import { fmtRest } from '../lib/format.js'
 import NavBar from '../components/NavBar.jsx'
@@ -141,6 +141,21 @@ export default function Plan() {
   const [swapping, setSwapping] = useState(null)
   const [coverageOpen, setCoverageOpen] = useState(false)
 
+  // Once per exercise: a lift in two sessions is one lift with one history.
+  const seen = new Set()
+  const stalled = []
+  plan.rotation.forEach((session, si) =>
+    session.exercises.forEach((e, ei) => {
+      const id = swaps[e.exerciseId] || e.exerciseId
+      if (seen.has(id)) return
+      seen.add(id)
+      const kg = stalledAt(exerciseHistory(state.workouts, id))
+      if (kg == null) return
+      const ex = getExercise(id, customEx)
+      stalled.push({ sessionIdx: si, exerciseIdx: ei, ex, name: exerciseName(ex), kg, session: session.name })
+    }),
+  )
+
   return (
     <>
       <NavBar title="Plan" />
@@ -157,6 +172,27 @@ export default function Plan() {
           />
         </Group>
 
+        {/* Every lift stalledAt flags, gathered so it does not take a scroll through three
+            sessions to find one. Information only, like the flag: each row opens the same
+            sheet as the lift's own row, where the rep window and the step live. */}
+        {stalled.length > 0 && (
+          <>
+            <Section>Worth a look</Section>
+            <Group>
+              {stalled.map((x) => (
+                <Row
+                  key={`${x.sessionIdx}-${x.exerciseIdx}`}
+                  title={x.name}
+                  subtitle={`No gain in ${STALL_SESSIONS} sessions at ${x.kg} kg · ${x.session}`}
+                  thumb={<Thumb exercise={x.ex} />}
+                  chevron
+                  onClick={() => setEditing({ sessionIdx: x.sessionIdx, exerciseIdx: x.exerciseIdx })}
+                />
+              ))}
+            </Group>
+          </>
+        )}
+
         {plan.rotation.map((session, si) => (
           <div key={si}>
             {/* All three days take the same lift tint on purpose — a colour per day would
@@ -169,6 +205,7 @@ export default function Plan() {
                 {session.name} · {session.exercises.length}{' '}
                 {session.exercises.length === 1 ? 'exercise' : 'exercises'} ·{' '}
                 {session.exercises.reduce((n, e) => n + e.sets, 0)} sets
+                {typicalLabel(state.workouts, si, plan.rotation.length)}
               </Section>
             </div>
             <Group className="plan-sequence">
@@ -276,6 +313,12 @@ export default function Plan() {
       )}
     </>
   )
+}
+
+// How long the session usually takes, from its own logs — the same figure Today's card shows.
+function typicalLabel(workouts, rotationIndex, rotationCount) {
+  const mins = typicalMinutes(workouts, rotationIndex, rotationCount)
+  return mins == null ? '' : ` · ~${mins} min`
 }
 
 function SessionCountControl() {

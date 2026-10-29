@@ -37,6 +37,21 @@ export const RUN_TYPES = [
   { id: 'other', label: 'Other' },
 ]
 
+// Ride types, on the same terms as run types: what kind of ride, never how hard, and read by
+// nothing but the labels. The ride trend deliberately does NOT split on it — 30- and 60-minute
+// rides measured the same speed (owner's decision, 2026-10-28) — so this is a description of
+// the session and nothing more. Its own field, `rideType`, so a run's vocabulary and a ride's
+// never share an id.
+export const RIDE_TYPES = [
+  { id: 'short', label: 'Short' },
+  { id: 'long', label: 'Long' },
+]
+
+export function rideTypeLabel(id) {
+  const found = RIDE_TYPES.find((t) => t.id === id)
+  return found ? found.label : null
+}
+
 export function runTypeLabel(id) {
   const found = RUN_TYPES.find((t) => t.id === id)
   return found ? found.label : null

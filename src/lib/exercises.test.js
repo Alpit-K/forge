@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { swapSuggestions, weightHint } from './exercises.js'
+import { swapSuggestions, weightHint, platesOnly, perSide, warmupSteps } from './exercises.js'
 
 describe('weightHint', () => {
   it('flags dumbbell and kettlebell as per-side', () => {
@@ -77,5 +77,38 @@ describe('swapSuggestions', () => {
   it('falls back to body part for a custom exercise with no target', () => {
     const custom = all[5]
     expect(ids(swapSuggestions(custom, all, []))).toEqual(['sq', 'rdl', 'lp', 'split'])
+  })
+})
+
+describe('plates', () => {
+  it('is plates-only for the barbell family and nothing else', () => {
+    expect(platesOnly({ equipment: 'barbell' })).toBe(true)
+    expect(platesOnly({ equipment: 'sled machine' })).toBe(false)
+    expect(platesOnly(null)).toBe(false)
+  })
+
+  it('halves the logged weight to the centigram', () => {
+    expect(perSide(35)).toBe(17.5)
+    expect(perSide(42.5)).toBe(21.25)
+    expect(perSide(null)).toBeNull()
+  })
+
+  it('ramps from the bar on the 1.25 kg grid', () => {
+    expect(warmupSteps(35)).toEqual([
+      { sideKg: null, reps: 10 },
+      { sideKg: 8.75, reps: 5 },
+      { sideKg: 13.75, reps: 3 },
+    ])
+  })
+
+  // At 5 kg of plates, half a side rounds to 1.25 and three quarters to 2.5 — the weight
+  // itself — so only the bar and one step are left.
+  it('drops a step that reaches the working weight', () => {
+    expect(warmupSteps(5)).toEqual([{ sideKg: null, reps: 10 }, { sideKg: 1.25, reps: 5 }])
+  })
+
+  it('offers nothing without a weight', () => {
+    expect(warmupSteps(null)).toEqual([])
+    expect(warmupSteps(0)).toEqual([])
   })
 })

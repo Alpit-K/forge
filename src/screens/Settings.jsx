@@ -5,8 +5,10 @@ import Icon from '../components/Icon.jsx'
 import { Group, Row, RowIcon, Section } from '../components/List.jsx'
 import { exportBackup } from '../lib/backup.js'
 import { MEDIA_ENABLED } from '../lib/exercises.js'
-import { WEEK_SHAPE_KINDS } from '../lib/seed.js'
+import { WEEK_SHAPE_KINDS, CARDIO_SPORTS } from '../lib/seed.js'
+import { ACTIVITY_TYPES } from '../lib/activities.js'
 import { fmtAgo } from '../lib/format.js'
+import Selector from '../components/Selector.jsx'
 
 function Toggle({ checked, onChange }) {
   return (
@@ -53,8 +55,9 @@ function Stepper({ value, min, max, onChange }) {
 // Seven columns rather than seven rows, because the thing being set is a SHAPE and a stack
 // of rows cannot show one. Tap still cycles the kind — a picker per day would be 28 taps of
 // chrome for something set once — and the underlying value is untouched: seven strings,
-// Monday first, naming the kind of day and never a specific session.
-function WeekPlanner({ shape, onChange }) {
+// Monday first, naming the kind of day and never a specific session. Exported for the Week
+// sheet, which is where you are looking when a suggestion surprises you.
+export function WeekPlanner({ shape, onChange }) {
   return (
     <div className="planner">
       {DAY_LABELS.map((day, i) => {
@@ -82,6 +85,36 @@ function WeekPlanner({ shape, onChange }) {
         )
       })}
     </div>
+  )
+}
+
+// A heart-rate limit is typed, so it is checked here, at the boundary: a whole number in a
+// range a human heart reaches, or blank for none. Anything else leaves the stored value as it
+// was. Committed on blur, like every typed number in the app.
+const HR_MIN = 100
+const HR_MAX = 220
+
+function CeilingField({ value, onChange }) {
+  const [draft, setDraft] = useState(null)
+  const commit = () => {
+    const raw = draft
+    setDraft(null)
+    if (raw == null) return
+    if (raw.trim() === '') return onChange(null)
+    const n = Number(raw)
+    if (Number.isInteger(n) && n >= HR_MIN && n <= HR_MAX) onChange(n)
+  }
+  return (
+    <input
+      className="row-field tnum"
+      type="number"
+      inputMode="numeric"
+      value={draft ?? (value == null ? '' : String(value))}
+      placeholder="bpm, optional"
+      aria-label="Heart-rate ceiling in beats per minute"
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+    />
   )
 }
 
@@ -170,6 +203,31 @@ export default function Settings({ onClose }) {
           subtitle="Runs, rides and matches per week"
           thumb={<RowIcon name="run" />}
           value={<Stepper value={settings.weeklyCardio} min={0} max={7} onChange={(v) => setSetting('weeklyCardio', v)} />}
+        />
+      </Group>
+
+      {/* Chosen, never inferred: the coach names the session after it and a new log opens on
+          it. Reading it off the last log would mean a block of rides could never offer a run. */}
+      <Section>Cardio</Section>
+      <Group>
+        <Row
+          title="Current cardio"
+          subtitle="What Today suggests and Log activity opens on"
+          thumb={<RowIcon name={settings.cardioSport || 'run'} />}
+          value={
+            <Selector
+              label="Current cardio"
+              value={settings.cardioSport}
+              options={CARDIO_SPORTS.map((id) => ({ value: id, label: ACTIVITY_TYPES.find((t) => t.id === id).label }))}
+              onChange={(v) => setSetting('cardioSport', v)}
+            />
+          }
+        />
+        <Row
+          title="Heart-rate ceiling"
+          subtitle="Shown on easy days"
+          thumb={<RowIcon name="other" />}
+          value={<CeilingField value={settings.hrCeiling} onChange={(v) => setSetting('hrCeiling', v)} />}
         />
       </Group>
 

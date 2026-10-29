@@ -90,6 +90,21 @@
   --cat-lift-dim: rgba(139, 124, 245, 0.24);
   --cat-cardio-dim: rgba(10, 152, 199, 0.24);
 
+  /* The coverage sheet's body figure. A muscle not trained is --bg-tertiary, the parts no
+     group counts (head, hands, forearms, shins) sit a step darker so the trained regions
+     stand out, and the four shades are --accent at rising alpha over the sheet — written
+     out by hand like the -dim tints above: MOVE ONE AND MOVE ALL. Luminance only, no new
+     hue: the list beside the figure carries every number, so it still reads in greyscale.
+     The alphas are spaced, not picked: each step is 1.29–1.39:1 from the one below it on a
+     card, and the first is 1.29:1 off an untrained muscle — at 0.2 it measured 1.04:1 and
+     a lightly trained muscle looked untrained. The full step is --accent, 4.73:1. */
+  --cov-inert: #2c2b36;
+  --cov-0: var(--bg-tertiary);
+  --cov-1: rgba(139, 124, 245, 0.38);
+  --cov-2: rgba(139, 124, 245, 0.58);
+  --cov-3: rgba(139, 124, 245, 0.78);
+  --cov-4: var(--accent);
+
   --success: #30d158;
   --danger: #ff5c50;
 
@@ -3064,4 +3079,146 @@ button.row:active,
   color: var(--label-secondary);
   padding: 0;
   margin: calc(var(--sp-2) * -1) 0 var(--sp-4);
+}
+
+/* Muscle coverage — a sheet's content, opened from the custom-workout builder and History.
+   The segmented control is the sheet's own: nothing else in the app switches a view in
+   place, so it is not a shared pattern yet. */
+.segmented {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius);
+  padding: 2px;
+}
+
+.segmented button {
+  font-family: inherit;
+  font-size: var(--fs-meta);
+  color: var(--label);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  min-height: 44px;
+  cursor: pointer;
+}
+
+/* The selected segment is said by weight as well as the raised fill, so it reads in
+   greyscale — the same rule the tab bar keeps. */
+.segmented button[aria-pressed='true'] {
+  background: var(--bg-elevated);
+  font-weight: 600;
+}
+
+.cov-period {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--sp-2);
+  text-align: center;
+}
+
+.cov-period .btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.cov-period-title {
+  font-weight: 600;
+}
+
+.cov-period-sub {
+  font-size: var(--fs-micro);
+  color: var(--label-secondary);
+}
+
+/* The chevron points right; the earlier-block arrow is the same glyph turned round, so
+   both carry the one stroke rule. */
+.cov-back {
+  display: inline-flex;
+  transform: rotate(180deg);
+}
+
+.cov-figures {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0 var(--sp-4);
+}
+
+.cov-figure {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Stroked in the sheet's own colour, which is what separates one muscle from the next. */
+.cov-figure path {
+  stroke: var(--bg-elevated);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+
+.cov-bar {
+  height: 4px;
+  margin-top: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+
+.cov-bar span {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+}
+
+/* A fixed width, so every bar in the list ends at the same x whatever the number says. */
+.cov .row-value {
+  min-width: 84px;
+  margin-left: var(--sp-4);
+  text-align: right;
+}
+
+.cov .row-value b {
+  color: var(--label);
+  font-weight: 600;
+}
+
+.cov-exercises {
+  padding: 0 var(--sp-4) var(--sp-2) var(--sp-8);
+}
+
+.cov-exercise {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-height: 44px;
+}
+
+.cov-exercise-name {
+  font-size: var(--fs-meta);
+}
+
+.cov-exercise-meta {
+  font-size: var(--fs-micro);
+  color: var(--label-secondary);
+}
+
+.cov-exercise .btn:disabled {
+  color: var(--label-secondary);
+  cursor: default;
+}
+
+.cov-note {
+  font-size: var(--fs-micro);
+  color: var(--label-secondary);
+  margin: var(--sp-2) 0 var(--sp-4);
+}
+
+/* A fact, not a control — the chip's shape without its press. */
+.cov-untrained {
+  cursor: default;
 }

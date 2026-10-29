@@ -451,11 +451,14 @@ export function createStore(storage) {
         // this too and is correctly a no-op.
         if (s.active.exercises.some((e) => e.exerciseId === newId)) return {}
         const ex = getExercise(newId, s.customEx)
+        // The step belongs to the exercise, not the slot: one planned elsewhere keeps the
+        // incrementKg its own slot gives it, as addExerciseToActive does.
+        const home = findSlotFor(s.plan, s.swaps, newId)
         const rules = {
           repsMin: entry.repsMin,
           repsMax: entry.repsMax,
           prescribed: entry.sets,
-          increment: incrementFor(null, ex),
+          increment: incrementFor(home && findTemplateEntry(s.plan, home.slotId, home.rotationIndex), ex),
         }
         const target = targetFor(newId, rules, s.workouts)
         const fill = prefilledSets(entry.performed.length, target)

@@ -208,7 +208,19 @@ export function exerciseStats(history) {
   }
 }
 
-// First logged working weight -> last, per exercise, across a block's workouts (in order).
+// The fewest reps among the completed sets at the working weight — "sets of 8" means every
+// set there reached 8. Lighter back-off sets are a different weight and say nothing about it.
+function repsAtWeight(sets, weightKg) {
+  let fewest = null
+  for (const s of sets || []) {
+    if (s && s.done && s.weightKg === weightKg && (fewest == null || s.reps < fewest)) fewest = s.reps
+  }
+  return fewest
+}
+
+// First logged working weight -> last, per exercise, across a block's workouts (in order),
+// with the reps at each. A block where the weight held and the reps grew is progress, and
+// "60 → 60 kg" alone said nothing had happened.
 export function blockWeightChanges(workouts) {
   const first = new Map()
   const last = new Map()
@@ -216,13 +228,15 @@ export function blockWeightChanges(workouts) {
     for (const e of w.entries) {
       const top = heaviestDone(e.sets)
       if (top == null) continue
-      if (!first.has(e.exerciseId)) first.set(e.exerciseId, top)
-      last.set(e.exerciseId, top)
+      const point = { weightKg: top, reps: repsAtWeight(e.sets, top) }
+      if (!first.has(e.exerciseId)) first.set(e.exerciseId, point)
+      last.set(e.exerciseId, point)
     }
   }
   const out = []
   for (const [exerciseId, f] of first) {
-    out.push({ exerciseId, first: f, last: last.get(exerciseId) })
+    const l = last.get(exerciseId)
+    out.push({ exerciseId, first: f.weightKg, last: l.weightKg, firstReps: f.reps, lastReps: l.reps })
   }
   return out
 }

@@ -432,7 +432,7 @@ describe('a self-chosen weight change', () => {
   it('leaves the ordinary hold copy alone when the weight did not move', () => {
     const w = [workout('0043', goodAt60), workout('0043', [set(10, 60), set(9, 60), set(9, 60)], 1)]
     expect(nextTarget('0043', state({ workouts: w })).reason).toBe(
-      'Holding — you got 10, 9, 9 last session',
+      'Holding — you got 10, 9, 9 reps last session',
     )
   })
 
@@ -505,7 +505,7 @@ describe('a self-chosen weight change', () => {
     // The same session with the mistyped 65s corrected back to 60: no move, ordinary hold.
     const corrected = [workout('0043', goodAt60), workout('0043', [set(9, 60), set(9, 60), set(8, 60)], 1)]
     expect(nextTarget('0043', state({ workouts: corrected })).reason).toBe(
-      'Holding — you got 9, 9, 8 last session',
+      'Holding — you got 9, 9, 8 reps last session',
     )
   })
 

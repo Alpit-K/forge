@@ -10,7 +10,7 @@ import {
   takesDistance,
   takesMatchFormat,
 } from '../lib/activities.js'
-import { fmtPace } from '../lib/format.js'
+import { fmtRate } from '../lib/format.js'
 import { toDateInput, withDate, notAfterToday } from '../lib/dateInput.js'
 
 // Add and edit are the same form; `activity` is null when adding. Fields are held locally
@@ -79,7 +79,7 @@ export default function ActivitySheet({ activity, preset, onSave, onDelete, onOp
   // Shown as you type, from the two numbers actually entered. It is the number that tells
   // you whether the run was what you meant it to be, and it was previously only visible
   // after saving.
-  const pace = fmtPace(distanceEntered ? km : null, minutesValid ? mins : null)
+  const pace = fmtRate(type, distanceEntered ? km : null, minutesValid ? mins : null)
 
   const save = () => {
     onSave({
@@ -108,12 +108,12 @@ export default function ActivitySheet({ activity, preset, onSave, onDelete, onOp
 
   return (
     <Sheet title={activity ? 'Edit activity' : 'Log activity'} onClose={onClose}>
-      {/* The way into the running record, and the same route a lift takes: a logged entry,
-          then the trend behind it. Only on a saved run — there is nothing to trend from a
-          form you have not saved yet, and the other types have no trend to show. */}
-      {onOpenTrend && activity && isRun && (
-        <button type="button" className="ex-open" onClick={onOpenTrend}>
-          Run trend
+      {/* The way into the cardio record, and the same route a lift takes: a logged entry,
+          then the trend behind it. Only on a saved run or ride — there is nothing to trend
+          from a form you have not saved yet, and the other types have no trend to show. */}
+      {onOpenTrend && activity && (isRun || type === 'cycle') && (
+        <button type="button" className="ex-open" onClick={() => onOpenTrend(type)}>
+          {isRun ? 'Run trend' : 'Ride trend'}
         </button>
       )}
 

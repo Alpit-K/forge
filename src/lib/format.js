@@ -55,8 +55,8 @@ export function fmtActivityCount(n) {
   return n === 1 ? '1 activity' : `${n} activities`
 }
 
-export function fmtRunCount(n) {
-  return n === 1 ? '1 run' : `${n} runs`
+export function fmtCount(n, noun) {
+  return n === 1 ? `1 ${noun}` : `${n} ${noun}s`
 }
 
 // Distance is optional on every activity, so this is only called when one exists. One
@@ -96,4 +96,32 @@ export function fmtWalkBreaks(n) {
 export function fmtPace(km, minutes) {
   if (!km || !minutes || km <= 0 || minutes <= 0) return null
   return fmtPaceSec((minutes * 60) / km)
+}
+
+// Kilometres per hour, one decimal. The engine keeps speed unrounded and rounds here, as
+// it does pace.
+export function fmtSpeed(kmh) {
+  if (!kmh || kmh <= 0) return null
+  return `${kmh.toFixed(1)} km/h`
+}
+
+// The one place that decides which unit a sport reads in. A ride is spoken of in km/h; a
+// run, a walk and a swim in minutes per kilometre.
+export function fmtRate(type, km, minutes) {
+  if (type !== 'cycle') return fmtPace(km, minutes)
+  if (!km || !minutes || km <= 0 || minutes <= 0) return null
+  return fmtSpeed((km / minutes) * 60)
+}
+
+// One line of a block's summary, and which way it moved. A weight that moved is the change;
+// a weight that held says what the reps at it did instead, because "60 → 60 kg" read as
+// nothing happening across a block that took every set from 8 reps to 10.
+export function fmtBlockChange({ first, last, firstReps, lastReps }) {
+  const diff = Math.round((last - first) * 100) / 100
+  if (diff !== 0) return { text: `${first} → ${last} kg`, direction: diff > 0 ? 'up' : 'down' }
+  const reps = lastReps - firstReps
+  return {
+    text: `${last} kg: ${firstReps}s → ${lastReps}s`,
+    direction: reps > 0 ? 'up' : reps < 0 ? 'down' : null,
+  }
 }

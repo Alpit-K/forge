@@ -285,7 +285,8 @@ export function targetFor(exerciseId, rules, workouts = []) {
       : `Moved up to ${base} kg — build back to ${prescribed}×${repsMax}`
   } else if (moved > 0) reason = `Still at ${base} kg — you moved up last session`
   else if (moved < 0) reason = `Back at ${base} kg — build from here`
-  else reason = `Holding — you got ${repsList || 'fewer reps'} last session`
+  // "reps" is spelled out: on a high-rep lift, "you got 25, 15, 10" reads as weights.
+  else reason = `Holding — you got ${repsList ? `${repsList} reps` : 'fewer reps'} last session`
 
   return { ...target, kind: 'hold', reason }
 }

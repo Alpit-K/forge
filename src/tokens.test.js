@@ -148,6 +148,8 @@ describe('graphical objects meet 3:1', () => {
     ['logged-set tick glyph on card', tickGlyph, card],
     ['ring fill on ground', accentFill, bg],
     ['planned-day ring on card', accent, card],
+    // The coverage figure's full shade — a muscle on plan — on the sheet it is drawn in.
+    ['coverage full shade on sheet', parse(resolve(token('cov-4'))), card],
   ]
   for (const [name, fg, base] of pairs) {
     it(`${name} clears 3:1`, () => {
@@ -164,6 +166,12 @@ describe('surfaces read as raised', () => {
   })
   it('an input sits above the card', () => {
     expect(ratio(tertiary, card)).toBeGreaterThanOrEqual(1.2)
+  })
+  // The coverage figure's lightest shade against a muscle not trained at all. At an alpha
+  // of 0.2 the two measured 1.04:1 and a lightly trained muscle looked untrained.
+  it('the first coverage shade stands off an untrained muscle', () => {
+    const firstShade = over(parse(token('cov-1')), card)
+    expect(ratio(firstShade, parse(resolve(token('cov-0'))))).toBeGreaterThanOrEqual(1.2)
   })
   it('the sheen lifts the card top without reaching the next surface', () => {
     expect(luminance(cardTop)).toBeGreaterThan(luminance(card))

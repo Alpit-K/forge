@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { runHistory, runStats } from './activity.js'
+import { runHistory, runStats, rideHistory, rideStats } from './activity.js'
 import { fmtPaceSec } from '../lib/format.js'
 
 const run = (at, distanceKm, minutes, extra = {}) => ({
@@ -156,5 +156,82 @@ describe('pace rounding', () => {
 
   it('never renders sixty seconds', () => {
     expect(fmtPaceSec(359.6)).toBe('6:00 /km')
+  })
+})
+
+const ride = (at, distanceKm, minutes, extra = {}) => ({
+  id: at,
+  type: 'cycle',
+  at,
+  minutes,
+  distanceKm,
+  intensity: 'easy',
+  ...extra,
+})
+
+// Four rides, as logged.
+const REAL_RIDES = [
+  ride('2026-10-06T06:04:23.714Z', 12, 29, { avgHr: 117 }),
+  ride('2026-10-10T14:08:14.048Z', 15, 35, { avgHr: 131 }),
+  ride('2026-10-14T16:10:45.585Z', 13.1, 30, { avgHr: 130 }),
+  ride('2026-10-26T17:57:07.948Z', 26.15, 60, { avgHr: 127 }),
+]
+
+describe('rideHistory', () => {
+  it('keeps rides only, and drops one with no distance rather than counting it as zero', () => {
+    const history = rideHistory([
+      ride('2026-10-06T06:00:00.000Z', 12, 29),
+      run('2026-10-07T06:00:00.000Z', 5, 30),
+      ride('2026-10-08T06:00:00.000Z', null, 40),
+    ])
+    expect(history).toHaveLength(1)
+    expect(history[0].distanceKm).toBe(12)
+  })
+
+  it('gives speed in km/h, and null when no duration was logged', () => {
+    const [timed, untimed] = rideHistory([
+      ride('2026-10-06T06:00:00.000Z', 12, 29),
+      ride('2026-10-08T06:00:00.000Z', 12, null),
+    ])
+    expect(timed.speedKmh).toBeCloseTo(24.83, 2)
+    expect(untimed.speedKmh).toBeNull()
+  })
+
+  it('sorts oldest first, because a ride can be back-dated after a later one', () => {
+    const history = rideHistory([
+      ride('2026-10-14T06:00:00.000Z', 13.1, 30),
+      ride('2026-10-06T06:00:00.000Z', 12, 29),
+    ])
+    expect(history.map((r) => r.distanceKm)).toEqual([12, 13.1])
+  })
+})
+
+describe('rideStats', () => {
+  it('is null with nothing to report', () => {
+    expect(rideStats([])).toBeNull()
+  })
+
+  it('reports the real rides', () => {
+    const stats = rideStats(rideHistory(REAL_RIDES))
+    expect(stats.rides).toBe(4)
+    expect(stats.totalKm).toBe(66.3)
+    expect(stats.longest.distanceKm).toBe(26.15)
+    expect(stats.speedChange).toBe(1.3)
+    expect(stats.firstSpeedAt).toBe('2026-10-06T06:04:23.714Z')
+    expect(stats.hrChange).toBe(10)
+  })
+
+  it('is null rather than zero on a single ride, with nothing to compare against', () => {
+    const stats = rideStats(rideHistory([REAL_RIDES[0]]))
+    expect(stats.latestSpeed).toBeCloseTo(24.83, 2)
+    expect(stats.speedChange).toBeNull()
+    expect(stats.hrChange).toBeNull()
+  })
+
+  it('keeps the earliest ride when the longest is matched', () => {
+    const stats = rideStats(
+      rideHistory([ride('2026-10-06T06:00:00.000Z', 20, 50), ride('2026-10-20T06:00:00.000Z', 20, 45)]),
+    )
+    expect(stats.longest.at).toBe('2026-10-06T06:00:00.000Z')
   })
 })

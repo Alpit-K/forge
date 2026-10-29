@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fmtPace, fmtDistance, fmtDayHeading, fmtRest } from './format.js'
+import { fmtPace, fmtDistance, fmtDayHeading, fmtRest, fmtSpeed, fmtRate, fmtCount, fmtBlockChange } from './format.js'
 
 // Narrow on purpose. The only thing here that can be silently wrong every single run is the
 // seconds carry — 5:60 is not a pace, and nobody would report it as a bug, they would just
@@ -70,5 +70,58 @@ describe('fmtRest', () => {
     expect(fmtRest(120)).toBe('2:00')
     expect(fmtRest(45)).toBe('0:45')
     expect(fmtRest(0)).toBe('0:00')
+  })
+})
+
+// A ride reads in km/h and every other sport in min/km. fmtRate is the one place that decides
+// which, so a row and the live preview in the sheet cannot disagree.
+describe('fmtRate', () => {
+  it('gives a ride its speed in km/h', () => {
+    expect(fmtRate('cycle', 13.1, 30)).toBe('26.2 km/h')
+  })
+
+  it('keeps every other sport on pace', () => {
+    expect(fmtRate('run', 5, 30)).toBe('6:00 /km')
+    expect(fmtRate('walk', 5, 60)).toBe('12:00 /km')
+  })
+
+  it('returns null when either half is missing, so callers can drop it', () => {
+    expect(fmtRate('cycle', null, 30)).toBeNull()
+  })
+})
+
+describe('fmtSpeed', () => {
+  it('shows one decimal, and null for nothing', () => {
+    expect(fmtSpeed(26.2)).toBe('26.2 km/h')
+    expect(fmtSpeed(null)).toBeNull()
+    expect(fmtSpeed(0)).toBeNull()
+  })
+})
+
+describe('fmtCount', () => {
+  it('pluralises', () => {
+    expect(fmtCount(1, 'ride')).toBe('1 ride')
+    expect(fmtCount(4, 'ride')).toBe('4 rides')
+  })
+})
+
+// Both the block marker in History and the block-complete screen print this; the direction
+// drives the same up/down class in each.
+describe('fmtBlockChange', () => {
+  it('states the reps when the weight held', () => {
+    expect(fmtBlockChange({ first: 60, last: 60, firstReps: 8, lastReps: 10 })).toEqual({
+      text: '60 kg: 8s → 10s',
+      direction: 'up',
+    })
+    expect(fmtBlockChange({ first: 60, last: 60, firstReps: 10, lastReps: 8 }).direction).toBe('down')
+    expect(fmtBlockChange({ first: 60, last: 60, firstReps: 8, lastReps: 8 }).direction).toBeNull()
+  })
+
+  it('states the weight when it moved', () => {
+    expect(fmtBlockChange({ first: 60, last: 62.5, firstReps: 12, lastReps: 8 })).toEqual({
+      text: '60 → 62.5 kg',
+      direction: 'up',
+    })
+    expect(fmtBlockChange({ first: 60, last: 55, firstReps: 6, lastReps: 12 }).direction).toBe('down')
   })
 })

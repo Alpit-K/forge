@@ -5,6 +5,7 @@ import NavBar from './NavBar.jsx'
 import { Thumb } from './ExerciseImage.jsx'
 import Sheet, { ActionSheet } from './Sheet.jsx'
 import ExerciseBrowser from './ExerciseBrowser.jsx'
+import MuscleCoverage from './MuscleCoverage.jsx'
 import Icon from './Icon.jsx'
 
 // `onStart` is passed only while a custom workout is being built: a row then opens its
@@ -16,6 +17,7 @@ export default function SessionOverview({ onClose, onEnd, onStart }) {
   const [rowIdx, setRowIdx] = useState(null)
   const [swapping, setSwapping] = useState(null)
   const [adding, setAdding] = useState(false)
+  const [coverage, setCoverage] = useState(false)
 
   if (!active) return null
 
@@ -81,6 +83,13 @@ export default function SessionOverview({ onClose, onEnd, onStart }) {
         <button type="button" className="btn" onClick={() => setAdding(true)}>
           Add exercise
         </button>
+        {/* Building a custom workout is when a muscle that is behind gets made up, so the
+            coverage sheet opens here and adds straight into the list above. */}
+        {onStart && (
+          <button type="button" className="btn" onClick={() => setCoverage(true)}>
+            Muscle coverage
+          </button>
+        )}
         {onStart && (
           <button type="button" className="btn-primary" disabled={active.exercises.length === 0} onClick={onStart}>
             Start workout
@@ -113,6 +122,12 @@ export default function SessionOverview({ onClose, onEnd, onStart }) {
               setSwapping(null)
             }}
           />
+        </Sheet>
+      )}
+
+      {coverage && (
+        <Sheet title="Muscle coverage" onClose={() => setCoverage(false)}>
+          <MuscleCoverage onAdd={(id) => useStore.getState().addExerciseToActive(id)} />
         </Sheet>
       )}
 

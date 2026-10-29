@@ -11,7 +11,6 @@ import {
   isBlockComplete,
 } from '../engine/session.js'
 import { groupByDay } from '../engine/week.js'
-import { loggedSetsPerWeek } from '../engine/muscles.js'
 import { getExercise, exerciseName } from '../lib/exercises.js'
 import {
   fmtDate,
@@ -19,7 +18,8 @@ import {
   fmtDayHeading,
   fmtActivityCount,
   fmtDistance,
-  fmtPace,
+  fmtRate,
+  fmtBlockChange,
   fmtHr,
   fmtWalkBreaks,
 } from '../lib/format.js'
@@ -32,6 +32,7 @@ import Sheet, { ActionSheet } from '../components/Sheet.jsx'
 import ProgressRing from '../components/ProgressRing.jsx'
 import ExerciseDetail from '../components/ExerciseDetail.jsx'
 import RunDetail from '../components/RunDetail.jsx'
+import RideDetail from '../components/RideDetail.jsx'
 import ActivitySheet from '../components/ActivitySheet.jsx'
 import WorkoutTimeSheet from '../components/WorkoutTimeSheet.jsx'
 import Icon from '../components/Icon.jsx'
@@ -154,7 +155,6 @@ function BlockMarker({ blockIndex, workouts, activityCount }) {
   const customEx = useStore((s) => s.customEx)
   const [open, setOpen] = useState(false)
   const changes = blockWeightChanges(workouts)
-  const coverage = loggedSetsPerWeek(workouts, customEx)
   const first = workouts[0]
   const last = workouts[workouts.length - 1]
   const summary = (
@@ -194,33 +194,17 @@ function BlockMarker({ blockIndex, workouts, activityCount }) {
               <div className="caption">Working weight</div>
               {changes.map((c) => {
                 const ex = getExercise(c.exerciseId, customEx)
-                const diff = Math.round((c.last - c.first) * 100) / 100
+                const { text, direction } = fmtBlockChange(c)
                 return (
                   <div className="block-change" key={c.exerciseId}>
                     <span className="block-change-name">{exerciseName(ex)}</span>
-                    <span className={`block-change-value tnum${diff > 0 ? ' up' : diff < 0 ? ' down' : ''}`}>
-                      {c.first} → {c.last} kg
+                    <span className={`block-change-value tnum${direction ? ` ${direction}` : ''}`}>
+                      {text}
                     </span>
                   </div>
                 )
               })}
             </div>
-            {/* What the block actually logged, per week, against the plan's own count in
-                the Plan tab — the comparison block 2 was designed from. */}
-            {coverage && (
-              <div className="block-changes">
-                <div className="caption">Sets per week</div>
-                {coverage.map((r) => (
-                  <div className="block-change" key={r.group}>
-                    <span className="block-change-name">{r.group}</span>
-                    <span className="block-change-value tnum">
-                      {r.direct}
-                      {r.indirect > 0 ? ` (+${r.indirect})` : ''}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -272,7 +256,7 @@ function ActivityRow({ activity, onSelect }) {
   // own, and records written before distance and intensity existed carry neither.
   const detail = [
     typeof activity.distanceKm === 'number' ? fmtDistance(activity.distanceKm) : null,
-    fmtPace(activity.distanceKm, activity.minutes),
+    fmtRate(activity.type, activity.distanceKm, activity.minutes),
     fmtHr(activity.avgHr),
     fmtWalkBreaks(activity.walkBreaks),
     matchFormatLabel(activity.matchFormat),
@@ -412,7 +396,8 @@ export default function History() {
   const [deleteActivityId, setDeleteActivityId] = useState(null)
   const [bannerDismissed, setBannerDismissed] = useState(false)
   const [exerciseDetail, setExerciseDetail] = useState(null)
-  const [trendOpen, setTrendOpen] = useState(false)
+  // null, or the sport the Cardio sheet is showing: 'run' or 'cycle'.
+  const [trend, setTrend] = useState(null)
   const [filter, setFilter] = useState(null)
   // 'new' for a past workout being entered, a workout's id for one being re-timed.
   const [timeSheet, setTimeSheet] = useState(null)
@@ -578,13 +563,23 @@ export default function History() {
           activity={activityDetail}
           onSave={(patch) => useStore.getState().updateActivity(activityDetail.id, patch)}
           onDelete={() => setDeleteActivityId(activityDetail.id)}
-          onOpenTrend={() => setTrendOpen(true)}
+          onOpenTrend={setTrend}
           onClose={() => setActivityId(null)}
         />
       )}
-      {trendOpen && (
-        <Sheet title="Running" onClose={() => setTrendOpen(false)}>
-          <RunDetail />
+      {/* Each sport keeps its own trend — kilometres on a bike and on foot are not the same
+          effort — so the sheet switches between them rather than drawing one line. */}
+      {trend && (
+        <Sheet title="Cardio" onClose={() => setTrend(null)}>
+          <div className="segmented">
+            <button type="button" aria-pressed={trend === 'run'} onClick={() => setTrend('run')}>
+              Running
+            </button>
+            <button type="button" aria-pressed={trend === 'cycle'} onClick={() => setTrend('cycle')}>
+              Cycling
+            </button>
+          </div>
+          {trend === 'run' ? <RunDetail /> : <RideDetail />}
         </Sheet>
       )}
       {deleteId && (

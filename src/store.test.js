@@ -48,7 +48,7 @@ describe('swapMidWorkout', () => {
       restSec: 150,
       increment: 2.5,
       kind: 'hold',
-      reason: 'Holding — you got 12, 10, 9 last session',
+      reason: 'Holding — you got 12, 10, 9 reps last session',
       performed: [
         { reps: 12, weightKg: 80, done: false },
         { reps: 10, weightKg: 80, done: false },
@@ -146,6 +146,37 @@ describe('swapMidWorkout', () => {
     expect(ex.reason).not.toBe(FIRST_REASON)
     expect(ex.performed.map((s) => s.weightKg)).toEqual([40, 40, 40])
     expect(ex.performed.map((s) => s.reps)).toEqual([10, 9, 9])
+  })
+
+  // The prescription is the slot's, but the step belongs to the exercise. A leg press slotted
+  // on another day at 10 kg steps by 10 kg there; swapped in for the squat it stepped by the
+  // equipment default 2.5, so the same machine moved at two rates depending on which day it
+  // was done on.
+  it("steps by the incoming exercise's own plan increment", () => {
+    const useStore = storeWithActive({
+      exerciseId: '0043',
+      swappedFrom: null,
+      lastSets: [],
+      repsMin: 8,
+      repsMax: 12,
+      sets: 3,
+      restSec: 150,
+      increment: 2.5,
+      kind: 'first',
+      reason: FIRST_REASON,
+      performed: [
+        { reps: 8, weightKg: null, done: false },
+        { reps: 8, weightKg: null, done: false },
+        { reps: 8, weightKg: null, done: false },
+      ],
+    })
+    const plan = structuredClone(seedPlan)
+    plan.rotation[2].exercises.find((e) => e.exerciseId === '0739').incrementKg = 10
+    useStore.setState({ plan })
+
+    useStore.getState().swapMidWorkout(0, '0739')
+
+    expect(useStore.getState().active.exercises[0].increment).toBe(10)
   })
 })
 

@@ -11,6 +11,7 @@ import { Group, Row, RowIcon, Section } from '../components/List.jsx'
 import { Thumb } from '../components/ExerciseImage.jsx'
 import Sheet from '../components/Sheet.jsx'
 import ExerciseBrowser from '../components/ExerciseBrowser.jsx'
+import MuscleCoverage from '../components/MuscleCoverage.jsx'
 import Selector from '../components/Selector.jsx'
 
 // Six pickers stacked on the bare sheet, on no card, with no grouping and no headers — the
@@ -138,11 +139,24 @@ export default function Plan() {
   const [editing, setEditing] = useState(null)
   const [adding, setAdding] = useState(null)
   const [swapping, setSwapping] = useState(null)
+  const [coverageOpen, setCoverageOpen] = useState(false)
 
   return (
     <>
       <NavBar title="Plan" />
       <div className="screen-body">
+        {/* First on the screen: how this block is going against the plan below it. It lives
+            here rather than in History because it measures you against the plan, and its
+            most useful moment is a block still under way. */}
+        <Group>
+          <Row
+            title="Muscle coverage"
+            subtitle="This block so far, against the plan"
+            chevron
+            onClick={() => setCoverageOpen(true)}
+          />
+        </Group>
+
         {plan.rotation.map((session, si) => (
           <div key={si}>
             {/* All three days take the same lift tint on purpose — a colour per day would
@@ -210,7 +224,6 @@ export default function Plan() {
             />
           ))}
         </Group>
-
         {/* Last, not first: it is set a couple of times a year, and the programme is what
             this screen is for. */}
         <Section>Block</Section>
@@ -223,6 +236,12 @@ export default function Plan() {
           />
         </Group>
       </div>
+
+      {coverageOpen && (
+        <Sheet title="Muscle coverage" onClose={() => setCoverageOpen(false)}>
+          <MuscleCoverage />
+        </Sheet>
+      )}
 
       {editing && (
         <EditSheet

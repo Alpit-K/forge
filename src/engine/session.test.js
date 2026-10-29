@@ -16,6 +16,7 @@ import {
   nextUnfinished,
   byFinish,
   blockWindow,
+  blockWeightChanges,
 } from './session.js'
 import { createInitialState } from '../lib/seed.js'
 
@@ -366,5 +367,25 @@ describe('blockWindow', () => {
       before: '2026-09-25T06:00:00.000Z',
     })
     expect(blockWindow(logs, 2, 'd').before).toBe(null)
+  })
+})
+
+// A block where the weight held and the reps grew used to read "60 → 60 kg", which says
+// nothing happened. The reps at the working weight are what moved.
+describe('blockWeightChanges', () => {
+  const log = (sets) => ({ entries: [{ exerciseId: '0043', sets }] })
+  const s = (reps, weightKg, done = true) => ({ reps, weightKg, done })
+
+  it('carries the fewest reps at the working weight, first and last', () => {
+    const [c] = blockWeightChanges([
+      log([s(8, 60), s(8, 60), s(9, 60)]),
+      log([s(10, 60), s(11, 60), s(10, 60)]),
+    ])
+    expect(c).toEqual({ exerciseId: '0043', first: 60, last: 60, firstReps: 8, lastReps: 10 })
+  })
+
+  it('ignores lighter back-off sets and unticked sets when counting reps', () => {
+    const [c] = blockWeightChanges([log([s(10, 60), s(9, 60), s(15, 40), s(2, 60, false)])])
+    expect(c.firstReps).toBe(9)
   })
 })

@@ -27,7 +27,7 @@ import ActivitySheet from '../components/ActivitySheet.jsx'
 import WeekSheet from '../components/WeekSheet.jsx'
 import { requestReloadIfIdle } from '../lib/update.js'
 import Icon from '../components/Icon.jsx'
-import { fmtDuration, fmtDate, fmtAgo, fmtActivityCount, fmtDistance } from '../lib/format.js'
+import { fmtDuration, fmtDate, fmtAgo, fmtActivityCount, fmtDistance, fmtBlockChange } from '../lib/format.js'
 
 export default function Today() {
   const active = useStore((s) => s.active)
@@ -545,15 +545,15 @@ function BlockCompleteView() {
           <Group>
             {changes.map((c) => {
               const ex = getExercise(c.exerciseId, customEx)
-              const diff = Math.round((c.last - c.first) * 100) / 100
+              const { text, direction } = fmtBlockChange(c)
               return (
                 <Row
                   key={c.exerciseId}
                   title={exerciseName(ex)}
                   thumb={<Thumb exercise={ex} />}
                   value={
-                    <span className={`delta${diff > 0 ? ' up' : diff < 0 ? ' down' : ''}`}>
-                      {c.first} → {c.last} kg
+                    <span className={`delta${direction ? ` ${direction}` : ''}`}>
+                      {text}
                     </span>
                   }
                 />

@@ -301,14 +301,14 @@ describe('the rest-day override says how long is left', () => {
 // A day holds one session, so what is short of each kind competes for the same days. On a
 // Friday with this shape, each shortfall fits the weekend alone and the two together do not.
 describe('the rest-day override adds the two shortfalls', () => {
-  const FRI = [2026, 10, 30]
+  const FRI = [2026, 9, 4]
   const settings = {
     ...createInitialState().settings,
-    weekShape: ['lift', 'cardio', 'lift', 'cardio', 'rest', 'long', 'lift'],
+    weekShape: ['cardio', 'lift', 'lift', 'cardio', 'rest', 'lift', 'long'],
   }
   const logged = {
-    workouts: [lift(iso(2026, 10, 28))],
-    activities: [run(iso(2026, 10, 26)), run(iso(2026, 10, 29))],
+    workouts: [lift(iso(...WED))],
+    activities: [run(iso(...MON)), run(iso(...THU))],
   }
 
   it('offers the kind the days ahead cannot cover', () => {
@@ -325,14 +325,14 @@ describe('the rest-day override adds the two shortfalls', () => {
   })
 
   it('stays rest when the two together still fit the days after this one', () => {
-    const weekShape = ['lift', 'cardio', 'lift', 'cardio', 'rest', 'long', 'rest']
+    const weekShape = ['cardio', 'lift', 'lift', 'cardio', 'rest', 'long', 'rest']
     const r = recommend(state({ settings: { ...settings, weekShape }, ...logged }), local(...FRI))
     expect(r.kind).toBe('rest')
     expect(r.reason).toContain('on track')
   })
 
   it('ignores the targets stored before they came from the shape', () => {
-    const weekShape = ['lift', 'cardio', 'lift', 'cardio', 'rest', 'lift', 'rest']
+    const weekShape = ['cardio', 'lift', 'lift', 'cardio', 'rest', 'lift', 'rest']
     const stale = { ...settings, weekShape, weeklyLifts: 3, weeklyCardio: 3 }
     const r = recommend(state({ settings: stale, ...logged }), local(...FRI))
     expect(r.kind).toBe('rest')

@@ -151,7 +151,9 @@ export default function WeekSheet({ onClose }) {
           }
         />
       </div>
-      <p className="consistency-note">Tap a day to cycle it: lift, cardio, long, rest.</p>
+      <p className="consistency-note">
+        Tap a day to cycle it: lift, cardio, long, rest. These days set your weekly targets.
+      </p>
     </Sheet>
   )
 }

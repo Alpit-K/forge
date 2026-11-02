@@ -6,7 +6,7 @@
 // asked for that did not happen is simply absent from history, and the next call reads the
 // history that actually exists. There is no missed state anywhere in this file by design.
 
-import { dayIndex, weekSummary, rollingSummary, daysBetween, summarise, startOfDay, addDays } from './week.js'
+import { dayIndex, weekSummary, rollingSummary, daysBetween, summarise, startOfDay, addDays, shapeCounts } from './week.js'
 import { lastDoneByRotation } from './session.js'
 
 export const ROLLING_DAYS = 7
@@ -31,26 +31,6 @@ function lastAt(items, field, now, predicate = () => true) {
     if (best === null || t > best) best = t
   }
   return best === null ? null : new Date(best).toISOString()
-}
-
-// What the rest of the week's shape still offers, by kind, for the days AFTER today. The
-// weekly target is a count and the shape is an input, so a shortfall the days ahead already
-// cover is not a shortfall today — which is what lets a run move a day earlier and cost
-// nothing. Without it the day the run moved off is still read as short and the card asks for
-// one session more than the week wants.
-//
-// Strictly after today, because today is the day being decided and counting it would make
-// every day cover itself. This is not a schedule: it reads the same input `planned` reads,
-// one day further along, exactly as nextSession already does. Nothing is stored and a day
-// that does not happen still leaves no trace.
-function remainingShape(shape, todayIdx) {
-  let lift = 0
-  let cardio = 0
-  for (let i = todayIdx + 1; i < 7; i += 1) {
-    if (shape[i] === 'lift') lift += 1
-    else if (shape[i] === 'cardio' || shape[i] === 'long') cardio += 1
-  }
-  return { lift, cardio }
 }
 
 function liftSuggestion(state, reason, now = new Date()) {
@@ -172,18 +152,26 @@ export function recommend(state, now = new Date()) {
     }
   }
 
-  const liftsShort = Math.max(0, (settings.weeklyLifts || 0) - week.lifts)
-  const cardioShort = Math.max(0, (settings.weeklyCardio || 0) - week.cardio)
+  const targets = shapeCounts(shape)
+  const liftsShort = Math.max(0, targets.lift - week.lifts)
+  const cardioShort = Math.max(0, targets.cardio - week.cardio)
   const daysLeft = 6 - todayIdx
 
+  // The weekly target is a count and the shape is an input, so a shortfall the days ahead
+  // already cover is not a shortfall today — which is what lets a run move a day earlier and
+  // cost nothing. Without it the day the run moved off is still read as short and the card
+  // asks for one session more than the week wants.
+  //
+  // Strictly after today, because today is the day being decided and counting it would make
+  // every day cover itself. This is not a schedule: it reads the same input `planned` reads,
+  // one day further along, exactly as nextSession already does. Nothing is stored and a day
+  // that does not happen still leaves no trace.
+  //
   // Spare: the shortfall is real and the days ahead hold EXACTLY enough of that kind to
-  // cover it, so today is one session more than the week asks for. Two boundaries and both
-  // are load-bearing. A met target is not spare — it keeps following the shape exactly as it
-  // always has. And `===` rather than `>=`, because supply beyond the demand means the shape
-  // itself has slack: a seven-lift-day shape against three lifts would make every day spare
-  // and defer the week to the end of it. Equal supply is what a session banked early leaves
-  // behind, which is the only case this exists for.
-  const remaining = remainingShape(shape, todayIdx)
+  // cover it, so today is one session more than the week asks for. A met target is not
+  // spare — it keeps following the shape exactly as it always has. Equal supply is what a
+  // session banked early leaves behind, which is the only case this exists for.
+  const remaining = shapeCounts(shape, todayIdx + 1)
   const liftsSettled = remaining.lift >= liftsShort
   const cardioSettled = remaining.cardio >= cardioShort
   const liftsSpare = liftsShort > 0 && remaining.lift === liftsShort
@@ -248,19 +236,21 @@ export function recommend(state, now = new Date()) {
     // daysLeft excludes today, which is what makes the comparison right — the question is
     // whether what is left fits in the days AFTER this one. The sentence has to count today
     // back in, because the card is asking to spend it.
-    const daysToGo = `${daysLeft + 1} ${daysLeft === 0 ? 'day' : 'days'}`
-    if (liftsShort > daysLeft) {
-      return liftSuggestion(
-        state,
-        `Your rest day, but ${liftsShort} ${liftsShort === 1 ? 'lift' : 'lifts'} left and ${daysToGo} to do them.`,
-        now,
-      )
-    }
-    if (cardioShort > daysLeft) {
-      return {
-        ...chooseCardio(rolling, liftDays, hardDays),
-        reason: `Your rest day, but ${cardioShort} cardio left and ${daysToGo} to do them.`,
-      }
+    //
+    // It is the SUM that has to fit: a day holds one session, so the two kinds compete for
+    // the same days, and two lifts and a cardio each fit a weekend alone. When the sum does
+    // not fit, the days ahead are too few for at least one kind, and that is the one offered.
+    if (liftsShort + cardioShort > daysLeft) {
+      const left = [
+        liftsShort > 0 && `${liftsShort} ${liftsShort === 1 ? 'lift' : 'lifts'}`,
+        cardioShort > 0 && `${cardioShort} cardio`,
+      ]
+        .filter(Boolean)
+        .join(' and ')
+      const reason = `Your rest day, but ${left} left and ${days(daysLeft + 1)} to do them.`
+      return liftsSettled
+        ? { ...chooseCardio(rolling, liftDays, hardDays), reason }
+        : liftSuggestion(state, reason, now)
     }
     return rest('Your rest day, and the week is on track.', weekSoFar)
   }

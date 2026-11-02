@@ -2,7 +2,7 @@ import { Fragment, useState } from 'react'
 import { useStore } from '../store.js'
 import BODY from '../data/body.json'
 import { PARTS } from '../lib/body.js'
-import { MUSCLE_GROUPS, coverageDone, coveragePlanned, coverageDue, coverageRates, coverageLevels } from '../engine/muscles.js'
+import { MUSCLE_GROUPS, coverageDone, coveragePlanned, coverageRates, coverageLevels } from '../engine/muscles.js'
 import { sessionsDone } from '../engine/session.js'
 import { getExercise, exerciseName } from '../lib/exercises.js'
 import Icon from './Icon.jsx'
@@ -26,8 +26,7 @@ function Figure({ view, levels }) {
 
 // Sets per muscle for a block or for all time, on a body and in a list. Only the current
 // block has a plan to measure against — no earlier plan is stored — so only it says "of" and
-// draws a bar: the plan's sets for the block, scaled to the sessions done so far, counted in
-// sessions, never dates, because a block is a count of sessions. An earlier block and all
+// draws a bar: sets done against the plan's sets for the whole block. An earlier block and all
 // time state sets per week instead, with no bar, since a bar against the busiest group
 // could never fill for the rest. `onAdd` is passed from the
 // custom-workout builder, which is where a muscle that is behind gets made up.
@@ -51,7 +50,7 @@ export default function MuscleCoverage({ onAdd }) {
   const firstBlock = Math.min(current, ...workouts.map((w) => w.blockIndex))
   const inWorkout = new Set(active ? active.exercises.map((e) => e.exerciseId) : [])
 
-  const due = (g) => (planned ? coverageDue(planned[g].sets, sessions, plan.sessionCount) : null)
+  const due = (g) => (planned ? Math.round(planned[g].sets) : null)
   // Before the block's first session there is nothing done to shade, and an all-dark body
   // said nothing at the one moment you open this to see what the block asks for. So the
   // figure shows the plan itself until a session lands, shaded relative to the busiest group
@@ -65,15 +64,17 @@ export default function MuscleCoverage({ onAdd }) {
         ? { done, rates }
         : { done, due: Object.fromEntries(MUSCLE_GROUPS.map((g) => [g, due(g)])) },
   )
-  const rows = MUSCLE_GROUPS.filter((g) => done[g].sets > 0 || (planned && planned[g].sets > 0))
+  // Most sets first. Ties, and every row of a block not started yet, fall back to the plan.
+  const rows = MUSCLE_GROUPS.filter((g) => done[g].sets > 0 || (planned && planned[g].sets > 0)).sort(
+    (a, b) => done[b].sets - done[a].sets || (planned ? planned[b].sets - planned[a].sets : 0),
+  )
   const untrained = MUSCLE_GROUPS.filter((g) => done[g].sets === 0)
 
   const value = (g) => {
     const d = done[g].sets
     if (!planned) return <><b>{rates[g]}</b> a week</>
     if (planned[g].sets === 0) return <><b>{d}</b> · off plan</>
-    if (sessions === 0) return <><b>0</b> of {Math.round(planned[g].sets)} this block</>
-    return <><b>{d}</b> of {due(g)}</>
+    return <><b>{d}</b> of {due(g)} this block</>
   }
   const fill = (g) => {
     const d = done[g].sets
@@ -160,12 +161,6 @@ export default function MuscleCoverage({ onAdd }) {
           )
         })}
       </div>
-
-      {planned && sessions > 0 && (
-        <p className="cov-note tnum">
-          Planned by now: the block's plan × {sessions} of {plan.sessionCount} sessions done.
-        </p>
-      )}
 
       {inWindow.length === 0 ? (
         <p className="cov-note">

@@ -79,10 +79,10 @@ describe('the recovery guard', () => {
       run(iso(2026, 8, 28), 'easy'),
     ]
     const r = recommend(state({ activities }), local(...MON))
-    // Monday is a lift day in the shape, so force the cardio branch via a cardio day. The
-    // shape needs a fourth cardio day for that: with Monday's run banked, the seeded shape
-    // leaves exactly two cardio days for the two still wanted and Tuesday is then spare.
-    const settings = { ...createInitialState().settings, weekShape: ['lift', 'cardio', 'lift', 'cardio', 'lift', 'cardio', 'long'] }
+    // Monday is a lift day in the shape, so force the cardio branch via a cardio day. Monday
+    // has to be a cardio day as well: with its run banked, the seeded shape leaves exactly
+    // two cardio days for the two still wanted and Tuesday is then spare.
+    const settings = { ...createInitialState().settings, weekShape: ['cardio', 'cardio', 'lift', 'lift', 'lift', 'cardio', 'long'] }
     const tue = recommend(
       state({ activities: [...activities, run(iso(...MON), 'hard')], settings }),
       local(...TUE),
@@ -144,8 +144,9 @@ describe('80/20 reads the rolling window, not week-to-date', () => {
 
 describe('behind override', () => {
   it('offers a lift on a rest day when the week can no longer be finished', () => {
-    // Thursday: 3 days left (Fri, Sat, Sun) and no lifts done. Not yet impossible.
-    const onTrack = recommend(state(), local(...THU))
+    // Thursday: 3 days left (Fri, Sat, Sun) and only 3 lifts wanted. Not yet impossible.
+    const liftsOnly = { ...createInitialState().settings, weekShape: ['lift', 'rest', 'lift', 'rest', 'lift', 'rest', 'rest'] }
+    const onTrack = recommend(state({ settings: liftsOnly }), local(...THU))
     expect(onTrack.kind).toBe('rest')
 
     // Saturday: 1 day left, 3 lifts short. Now it is.
@@ -157,7 +158,7 @@ describe('behind override', () => {
   it('swaps a lift day to cardio when the lift target is already met', () => {
     // Only lifts inside the current week count — Mon 31 Aug starts it, so a lift on 27 Aug
     // is last week's and does nothing for this week's target.
-    const settings = { ...createInitialState().settings, weeklyLifts: 2 }
+    const settings = { ...createInitialState().settings, weekShape: ['lift', 'cardio', 'lift', 'rest', 'rest', 'cardio', 'long'] }
     const workouts = [lift(iso(...MON), 0), lift(iso(...TUE), 1)]
     // Wednesday is a lift day in the shape, but the two lifts are already banked and no
     // cardio has happened, so the scarcer thing wins over the shape.
@@ -201,7 +202,7 @@ describe('a lift suggestion explains which slot and why', () => {
     const r = recommend(
       state({
         workouts: [lift(iso(...MON), 0), lift(iso(...TUE), 1), lift(iso(...WED), 2)],
-        settings: { ...shapeAllLift, weeklyLifts: 5 },
+        settings: shapeAllLift,
       }),
       local(...THU),
     )
@@ -219,7 +220,8 @@ describe('a rest card reports what happened, not what is missing', () => {
   })
 
   it('sums the week on a quiet rest day instead of leaving it blank', () => {
-    const r = recommend(state({ workouts: [lift(iso(...MON)), lift(iso(...WED))] }), local(...THU))
+    const workouts = [lift(iso(...MON)), lift(iso(...WED))]
+    const r = recommend(state({ workouts, activities: [run(iso(...TUE))] }), local(...THU))
     expect(r.kind).toBe('rest')
     expect(r.detail).toContain('2 lifts')
   })
@@ -236,7 +238,8 @@ describe('nextSession looks ahead', () => {
   // Thursday is rest in the shape, so the walk has to step over it to Friday rather than
   // stopping at the first day and reporting nothing.
   it('steps over rest days rather than stopping on one', () => {
-    const next = nextSession(state(), local(...WED))
+    const workouts = [lift(iso(...MON)), lift(iso(...WED))]
+    const next = nextSession(state({ workouts, activities: [run(iso(...TUE))] }), local(...WED))
     expect(next.days).toBe(2)
     expect(next.rec.kind).toBe('lift')
   })
@@ -250,7 +253,7 @@ describe('nextSession looks ahead', () => {
 
   // Nothing to look forward to is null, not an empty card.
   it('returns null when the whole week ahead is rest', () => {
-    const settings = { ...createInitialState().settings, weekShape: Array(7).fill('rest'), weeklyLifts: 0, weeklyCardio: 0 }
+    const settings = { ...createInitialState().settings, weekShape: Array(7).fill('rest') }
     expect(nextSession(state({ settings }), local(...MON))).toBe(null)
   })
 })
@@ -281,17 +284,59 @@ describe('the rest-day override says how long is left', () => {
   it('counts today in the days it offers', () => {
     // Thursday is the rest day in the seeded shape. Nothing lifted, four wanted, and three
     // days after this one — so the week no longer fits without spending today.
-    const settings = { ...createInitialState().settings, weeklyLifts: 4, weeklyCardio: 0 }
+    const weekShape = ['lift', 'rest', 'lift', 'rest', 'lift', 'lift', 'rest']
+    const settings = { ...createInitialState().settings, weekShape }
     const r = recommend(state({ settings }), local(...THU))
     expect(r.reason).toBe('Your rest day, but 4 lifts left and 4 days to do them.')
   })
 
   it('says one lift and one day rather than 1 lifts and 0 days', () => {
-    const settings = { ...createInitialState().settings, weeklyLifts: 1, weeklyCardio: 0 }
-    const shape = [...settings.weekShape]
-    shape[6] = 'rest'
-    const r = recommend(state({ settings: { ...settings, weekShape: shape } }), local(...SUN))
+    const weekShape = ['lift', 'rest', 'rest', 'rest', 'rest', 'rest', 'rest']
+    const settings = { ...createInitialState().settings, weekShape }
+    const r = recommend(state({ settings }), local(...SUN))
     expect(r.reason).toBe('Your rest day, but 1 lift left and 1 day to do them.')
+  })
+})
+
+// A day holds one session, so what is short of each kind competes for the same days. On a
+// Friday with this shape, each shortfall fits the weekend alone and the two together do not.
+describe('the rest-day override adds the two shortfalls', () => {
+  const FRI = [2026, 10, 30]
+  const settings = {
+    ...createInitialState().settings,
+    weekShape: ['lift', 'cardio', 'lift', 'cardio', 'rest', 'long', 'lift'],
+  }
+  const logged = {
+    workouts: [lift(iso(2026, 10, 28))],
+    activities: [run(iso(2026, 10, 26)), run(iso(2026, 10, 29))],
+  }
+
+  it('offers the kind the days ahead cannot cover', () => {
+    const r = recommend(state({ settings, ...logged }), local(...FRI))
+    expect(r.kind).toBe('lift')
+    expect(r.reason).toBe('Your rest day, but 2 lifts and 1 cardio left and 3 days to do them.')
+  })
+
+  it('offers cardio when the lifts are the ones already covered', () => {
+    const weekShape = ['cardio', 'cardio', 'lift', 'cardio', 'rest', 'lift', 'lift']
+    const r = recommend(state({ settings: { ...settings, weekShape }, ...logged }), local(...FRI))
+    expect(r.kind).toBe('cardio')
+    expect(r.reason).toBe('Your rest day, but 2 lifts and 1 cardio left and 3 days to do them.')
+  })
+
+  it('stays rest when the two together still fit the days after this one', () => {
+    const weekShape = ['lift', 'cardio', 'lift', 'cardio', 'rest', 'long', 'rest']
+    const r = recommend(state({ settings: { ...settings, weekShape }, ...logged }), local(...FRI))
+    expect(r.kind).toBe('rest')
+    expect(r.reason).toContain('on track')
+  })
+
+  it('ignores the targets stored before they came from the shape', () => {
+    const weekShape = ['lift', 'cardio', 'lift', 'cardio', 'rest', 'lift', 'rest']
+    const stale = { ...settings, weekShape, weeklyLifts: 3, weeklyCardio: 3 }
+    const r = recommend(state({ settings: stale, ...logged }), local(...FRI))
+    expect(r.kind).toBe('rest')
+    expect(r.reason).toContain('on track')
   })
 })
 
@@ -317,7 +362,7 @@ describe('a shortfall the days ahead already cover', () => {
   it('hands the day back when nothing else is short either', () => {
     const workouts = [lift(iso(...MON))]
     const activities = [run(iso(...TUE), 'easy'), run(iso(...WED), 'easy')]
-    const settings = withShape({ weeklyLifts: 1 })
+    const settings = withShape({ weekShape: ['lift', 'cardio', 'rest', 'cardio', 'rest', 'long', 'rest'] })
     const r = recommend(state({ workouts, activities, settings }), local(...THU))
     expect(r.kind).toBe('rest')
     expect(r.reason).toBe('1 cardio left and 1 day still shaped for it — today is spare.')
@@ -357,13 +402,16 @@ describe('the card names the current sport', () => {
 
   it('leaves a lift and a rest alone', () => {
     expect(recommend(sport('cycle'), local(...MON)).title).not.toMatch(/ride/)
-    expect(recommend(sport('cycle'), local(...THU)).title).toBe('Rest')
+    const onPace = { workouts: [lift(iso(...MON)), lift(iso(...WED))], activities: [run(iso(...TUE))] }
+    expect(recommend({ ...sport('cycle'), ...onPace }, local(...THU)).title).toBe('Rest')
   })
 })
 
 describe('the rest card counts the week in words', () => {
   it('says one lift, not one lifts', () => {
-    const r = recommend(state({ workouts: [lift(iso(...MON))] }), local(...THU))
+    const weekShape = ['lift', 'cardio', 'rest', 'rest', 'cardio', 'cardio', 'rest']
+    const settings = { ...createInitialState().settings, weekShape }
+    const r = recommend(state({ settings, workouts: [lift(iso(...MON))] }), local(...THU))
     expect(r.kind).toBe('rest')
     expect(r.detail).toBe('1 lift · 0 cardio this week')
   })

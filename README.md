@@ -92,8 +92,9 @@ the gear in the History nav bar.
 Progression is **double progression**: work up through a rep range at a fixed weight, and
 when every set reaches the top of the range, add one increment and start again at the
 bottom. Two consecutive sessions where more than half the sets fell short trigger a 5%
-deload, rounded to a weight that can actually be loaded — 2 kg steps for dumbbell work,
-2.5 kg otherwise, or a per-exercise override for machines with coarse stacks.
+deload, counted in whole steps of the exercise's own increment and never less than one —
+2 kg for dumbbell work, 2.5 kg for plate-loaded kit, 2.5 or 5 kg for cables and machines, or
+a per-exercise override for coarse stacks.
 
 Every prescribed target displays its reason: *"Up 2.5 kg — you hit 3×12 last time"*,
 *"Holding — you got 10, 9, 7 last session"*. A suggestion you cannot audit is one you stop

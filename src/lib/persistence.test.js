@@ -83,8 +83,6 @@ describe('settings hydration', () => {
     // The user's own choices survive.
     expect(settings.keepAwake).toBe(false)
     // The keys they have never seen arrive at their defaults rather than undefined.
-    expect(settings.weeklyLifts).toBe(3)
-    expect(settings.weeklyCardio).toBe(3)
     expect(Array.isArray(settings.weekShape)).toBe(true)
     expect(settings.weekShape).toHaveLength(7)
   })
@@ -96,7 +94,7 @@ describe('settings hydration', () => {
 
     expect(store.getState().importBackup(JSON.stringify(file)).ok).toBe(true)
     expect(store.getState().settings.sound).toBe(false)
-    expect(store.getState().settings.weeklyCardio).toBe(3)
+    expect(store.getState().settings.weekShape).toHaveLength(7)
   })
 
   it('leaves activities written before distance and intensity existed alone', () => {

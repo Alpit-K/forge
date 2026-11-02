@@ -156,6 +156,17 @@ export function backupFilename(date = new Date()) {
   return `forge-backup-${y}-${m}-${d}.json`
 }
 
+// Lifts and activities alike: both live only in this file once the phone is gone. A workout
+// timestamps as `finishedAt` and an activity as `at`.
+export function countSessionsSince(lastExportAt, workouts, activities) {
+  if (lastExportAt == null) return workouts.length + activities.length
+  const t = Date.parse(lastExportAt)
+  return (
+    workouts.filter((w) => Date.parse(w.finishedAt) > t).length +
+    activities.filter((a) => Date.parse(a.at) > t).length
+  )
+}
+
 // Every id a backup references, from all four places one can appear. `active` holds
 // `exercises`, a finished log holds `entries`, and both carry the id they were swapped from.
 function referencedExerciseIds(state) {

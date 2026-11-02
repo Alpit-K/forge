@@ -22,6 +22,12 @@ export function fmtDate(iso) {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 }
 
+export function fmtGreeting(date) {
+  const hour = date.getHours()
+  if (hour < 12) return 'Good morning'
+  return hour < 18 ? 'Good afternoon' : 'Good evening'
+}
+
 export function fmtDateTime(iso) {
   const d = new Date(iso)
   return `${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} · ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`

@@ -38,13 +38,7 @@ import ActivitySheet from '../components/ActivitySheet.jsx'
 import WorkoutTimeSheet from '../components/WorkoutTimeSheet.jsx'
 import Icon from '../components/Icon.jsx'
 import Settings from './Settings.jsx'
-import { exportBackup } from '../lib/backup.js'
-
-function countSessionsSince(lastExportAt, workouts) {
-  if (lastExportAt == null) return workouts.length
-  const t = Date.parse(lastExportAt)
-  return workouts.filter((w) => Date.parse(w.finishedAt) > t).length
-}
+import { exportBackup, countSessionsSince } from '../lib/backup.js'
 
 // The timeline is one merged stream. A workout timestamps as `finishedAt` and an activity
 // as `at`; normalising here is the only place that asymmetry has to be handled.
@@ -131,8 +125,9 @@ function timelineRows(days, currentBlock, includeBlocks = true) {
 
 function BackupBanner({ onExport, onDismiss }) {
   const workouts = useStore((s) => s.workouts)
+  const activities = useStore((s) => s.activities)
   const lastExportAt = useStore((s) => s.lastExportAt)
-  const since = countSessionsSince(lastExportAt, workouts)
+  const since = countSessionsSince(lastExportAt, workouts, activities)
   if (since < 8) return null
   return (
     <div className="banner">

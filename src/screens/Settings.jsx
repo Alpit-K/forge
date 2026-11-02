@@ -3,7 +3,7 @@ import { useStore } from '../store.js'
 import Sheet, { ActionSheet } from '../components/Sheet.jsx'
 import Icon from '../components/Icon.jsx'
 import { Group, Row, RowIcon, Section } from '../components/List.jsx'
-import { exportBackup } from '../lib/backup.js'
+import { exportBackup, countSessionsSince } from '../lib/backup.js'
 import { MEDIA_ENABLED } from '../lib/exercises.js'
 import { WEEK_SHAPE_KINDS, CARDIO_SPORTS } from '../lib/seed.js'
 import { ACTIVITY_TYPES } from '../lib/activities.js'
@@ -34,22 +34,6 @@ const KINDS = {
   cardio: { label: 'Cardio', icon: 'run', cat: 'cardio' },
   long: { label: 'Long', icon: 'route', cat: 'cardio' },
   rest: { label: 'Rest', icon: 'rest', cat: 'rest' },
-}
-
-// A stepper rather than a free number field: the range is 0–7 and a keyboard here would be
-// three taps and a dismiss for a number you change twice a year.
-function Stepper({ value, min, max, onChange }) {
-  return (
-    <span className="stepper">
-      <button type="button" aria-label="Decrease" disabled={value <= min} onClick={() => onChange(value - 1)}>
-        <Icon name="minus" size={16} />
-      </button>
-      <span className="tnum stepper-value">{value}</span>
-      <button type="button" aria-label="Increase" disabled={value >= max} onClick={() => onChange(value + 1)}>
-        <Icon name="plus" size={16} />
-      </button>
-    </span>
-  )
 }
 
 // Seven columns rather than seven rows, because the thing being set is a SHAPE and a stack
@@ -118,20 +102,14 @@ function CeilingField({ value, onChange }) {
   )
 }
 
-// Sessions finished since the last export. The banner in History counts the same way; this
-// is the same fact stated calmly next to the button that fixes it, rather than only as a
-// warning after it has built up.
-function countSessionsSince(lastExportAt, workouts) {
-  if (lastExportAt == null) return workouts.length
-  const t = Date.parse(lastExportAt)
-  return workouts.filter((w) => Date.parse(w.finishedAt) > t).length
-}
-
 export default function Settings({ onClose }) {
   const settings = useStore((s) => s.settings)
   const workouts = useStore((s) => s.workouts)
+  const activities = useStore((s) => s.activities)
   const lastExportAt = useStore((s) => s.lastExportAt)
-  const since = countSessionsSince(lastExportAt, workouts)
+  // The same fact as History's banner, stated calmly next to the button that fixes it rather
+  // than only as a warning after it has built up.
+  const since = countSessionsSince(lastExportAt, workouts, activities)
   const setSetting = useStore((s) => s.setSetting)
   const fileRef = useRef(null)
   const [importMessage, setImportMessage] = useState(null)
@@ -188,24 +166,6 @@ export default function Settings({ onClose }) {
         />
       </Group>
 
-      <Section>Weekly targets</Section>
-      <Group>
-        {/* "Lifts 3" alone leaves the unit to be guessed at — per week, per block, per
-            rotation are all plausible for a number in this app. The subtitle is the unit. */}
-        <Row
-          title="Lifts"
-          subtitle="Strength sessions per week"
-          thumb={<RowIcon name="dumbbell" />}
-          value={<Stepper value={settings.weeklyLifts} min={0} max={7} onChange={(v) => setSetting('weeklyLifts', v)} />}
-        />
-        <Row
-          title="Cardio"
-          subtitle="Runs, rides and matches per week"
-          thumb={<RowIcon name="run" />}
-          value={<Stepper value={settings.weeklyCardio} min={0} max={7} onChange={(v) => setSetting('weeklyCardio', v)} />}
-        />
-      </Group>
-
       {/* Chosen, never inferred: the coach names the session after it and a new log opens on
           it. Reading it off the last log would mean a block of rides could never offer a run. */}
       <Section>Cardio</Section>
@@ -241,9 +201,9 @@ export default function Settings({ onClose }) {
         />
       </Group>
       <p className="settings-note">
-        Tap a day to cycle it: lift, cardio, long run, rest. A shape, not a schedule — Today
-        reads it to decide what to suggest, and a day that does not happen is never recorded
-        as missed.
+        Tap a day to cycle it: lift, cardio, long run, rest. These days set your weekly targets.
+        A shape, not a schedule — Today reads it to decide what to suggest, and a day that does
+        not happen is never recorded as missed.
       </p>
 
       <Section>Your data</Section>

@@ -16,7 +16,7 @@ import {
   durationSeconds,
 } from '../engine/session.js'
 import { recommend, nextSession, sportNoun } from '../engine/coach.js'
-import { weekDays, dayIndex, weekSummary } from '../engine/week.js'
+import { weekDays, dayIndex, weekSummary, shapeCounts } from '../engine/week.js'
 import { getExercise, exerciseName, gifSrc, weightHint, platesOnly, perSide, warmupSteps } from '../lib/exercises.js'
 import { ACTIVITY_TYPES } from '../lib/activities.js'
 import NavBar from '../components/NavBar.jsx'
@@ -31,7 +31,7 @@ import ActivitySheet from '../components/ActivitySheet.jsx'
 import WeekSheet from '../components/WeekSheet.jsx'
 import { requestReloadIfIdle } from '../lib/update.js'
 import Icon from '../components/Icon.jsx'
-import { fmtDuration, fmtDate, fmtAgo, fmtActivityCount, fmtDistance, fmtBlockChange, fmtHr } from '../lib/format.js'
+import { fmtDuration, fmtDate, fmtGreeting, fmtAgo, fmtActivityCount, fmtDistance, fmtBlockChange, fmtHr } from '../lib/format.js'
 
 export default function Today() {
   const active = useStore((s) => s.active)
@@ -278,6 +278,7 @@ function IdleView() {
   const shown = typical == null ? rec : { ...rec, detail: `${rec.detail} · usually ${typical} min` }
   const lastSession = rec.kind === 'cardio' ? lastEasy(activities, rec.sport, now) : null
   const mix = activityMix(week.cardioLogs)
+  const targets = shapeCounts(settings.weekShape || [])
 
   // The coach only ever suggests easy cardio, so "Log it" opens with Easy chosen and the
   // current sport from Settings — the user's own setting, never a guess from the last log.
@@ -292,7 +293,7 @@ function IdleView() {
       <NavBar
         title="Forge"
         mark={<Icon name="anvil" size={30} />}
-        subtitle={`${DAY_NAMES[dayIndex(now)]} ${fmtDate(now.toISOString())}`}
+        subtitle={`${fmtGreeting(now)} · ${DAY_NAMES[dayIndex(now)]} ${fmtDate(now.toISOString())}`}
       />
       <div className="screen-body">
         <CoachCard
@@ -436,10 +437,10 @@ function IdleView() {
           <WeekStrip days={days} />
           <div className="week-counts tnum">
             <span>
-              Lifts {week.lifts} of {settings.weeklyLifts}
+              Lifts {week.lifts} of {targets.lift}
             </span>
             <span>
-              Cardio {week.cardio} of {settings.weeklyCardio}
+              Cardio {week.cardio} of {targets.cardio}
             </span>
           </div>
           {(mix.length > 0 || week.distanceKm > 0) && (
@@ -547,7 +548,7 @@ function SummaryView({ summary, onDone }) {
         <div className="summary-context tnum">
           {previousLine && <p>{previousLine}</p>}
           <p>
-            Lifts {week.lifts} of {settings.weeklyLifts} this week
+            Lifts {week.lifts} of {shapeCounts(settings.weekShape || []).lift} this week
           </p>
         </div>
 

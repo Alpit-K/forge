@@ -6,6 +6,7 @@ import {
   weekSummary,
   rollingSummary,
   daysBetween,
+  shapeCounts,
   weekDays,
   addDays,
   startOfDay,
@@ -138,6 +139,18 @@ describe('the two windows', () => {
     expect(rollingSummary([], [act(iso(2026, 8, 29))], now).cardio).toBe(1)
     expect(rollingSummary([], [act(iso(2026, 8, 28))], now).cardio).toBe(0)
     expect(rollingSummary([], [act(iso(2026, 9, 4, 23, 0))], now).cardio).toBe(1)
+  })
+})
+
+describe('shapeCounts', () => {
+  const shape = ['lift', 'cardio', 'lift', 'rest', 'long', 'rest', 'lift']
+
+  it('counts a long day as cardio and a rest day as nothing', () => {
+    expect(shapeCounts(shape)).toEqual({ lift: 3, cardio: 2 })
+  })
+
+  it('counts only the days from the one it is given', () => {
+    expect(shapeCounts(shape, 4)).toEqual({ lift: 1, cardio: 1 })
   })
 })
 

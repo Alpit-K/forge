@@ -143,14 +143,6 @@ export function coveragePlanned(plan, swaps, customEx) {
   return out
 }
 
-// What the plan would have given a group by now: its block's sets scaled to the sessions
-// done, never past the whole block. One whole number, because it is printed beside the bar
-// and the shade it drives — a fraction rounded for the label alone would let the three
-// disagree.
-export function coverageDue(plannedSets, sessions, sessionCount) {
-  return Math.round(plannedSets * Math.min(1, sessions / sessionCount))
-}
-
 // Sets per week for each group, where there is no plan to measure against — an earlier
 // block, or all time. A total would grow with the window and a bar against the busiest group
 // can never fill for the rest, so the figure is a rate, in the same unit the plan is written
@@ -164,9 +156,9 @@ export function coverageRates(done, workouts) {
   return Object.fromEntries(MUSCLE_GROUPS.map((g) => [g, Math.round((done[g].sets / weeks) * 10) / 10]))
 }
 
-// Shade step 0–4 for one group. In the current block `due` is what the plan would have
-// given by now, and the step says how close the group is to it — a group trained with
-// nothing due, off plan, is over it. Anywhere else there is no plan to compare against, so
+// Shade step 0–4 for one group. In the current block `due` is the plan's sets for the whole
+// block, and the step says how close the group is to it — a group trained with nothing
+// planned, off plan, is over it. Anywhere else there is no plan to compare against, so
 // the step is relative to the most-trained group.
 export function coverageLevel({ done, due, max }) {
   if (done === 0) return 0
@@ -178,7 +170,7 @@ export function coverageLevel({ done, due, max }) {
 }
 
 // Every group's shade step, from the same figures the list prints: sets per week where there
-// is no plan (`rates`), sets done against planned-by-now where there is one (`due`). Passing
+// is no plan (`rates`), sets done against the block's plan where there is one (`due`). Passing
 // raw totals in place of the rates would let the drawing and the list disagree.
 export function coverageLevels({ done, due, rates }) {
   if (rates) {

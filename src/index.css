@@ -288,7 +288,6 @@ body {
 .consistency-line,
 .consistency-note,
 .week-facts,
-.stepper-value,
 .browser-count,
 .weight-hint {
   font-variant-numeric: tabular-nums;
@@ -3147,37 +3146,6 @@ button.row:active,
   font-size: var(--fs-micro);
   color: var(--label-secondary);
   margin: var(--sp-2) 0 0;
-}
-
-/* ---- Settings: stepper and note ---- */
-.stepper {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-1);
-}
-
-.stepper button {
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--accent);
-  background: none;
-  border: none;
-  cursor: pointer;
-}
-
-.stepper button:disabled {
-  color: var(--label-secondary);
-  opacity: 0.4;
-}
-
-.stepper-value {
-  min-width: 20px;
-  text-align: center;
-  font-size: var(--fs-body);
-  color: var(--label);
 }
 
 /* ---- A row's leading glyph ---- */

@@ -4,6 +4,7 @@ import { getExercise, exerciseName } from '../lib/exercises.js'
 import { incrementFor } from '../engine/progression.js'
 import { exerciseHistory, stalledAt, STALL_SESSIONS, typicalMinutes } from '../engine/session.js'
 import { plannedSetsPerWeek } from '../engine/muscles.js'
+import { shapeCounts } from '../engine/week.js'
 import { fmtRest } from '../lib/format.js'
 import NavBar from '../components/NavBar.jsx'
 import Icon from '../components/Icon.jsx'
@@ -251,7 +252,7 @@ export default function Plan() {
             it is the fact the table exists to show. */}
         <Section>Sets per week</Section>
         <Group>
-          {plannedSetsPerWeek(plan, swaps, customEx, state.settings.weeklyLifts).map((r) => (
+          {plannedSetsPerWeek(plan, swaps, customEx, shapeCounts(state.settings.weekShape || []).lift).map((r) => (
             <Row
               key={r.group}
               title={r.group}

@@ -16,6 +16,19 @@ export function dayIndex(date) {
   return (date.getDay() + 6) % 7
 }
 
+// How many days of each kind the shape holds from `from` on. The whole shape is the week's
+// targets, so a target can never disagree with the days it is meant to fill. A long day is
+// cardio, as it is everywhere else the shape's four kinds are read as two.
+export function shapeCounts(shape, from = 0) {
+  let lift = 0
+  let cardio = 0
+  for (let i = from; i < 7; i += 1) {
+    if (shape[i] === 'lift') lift += 1
+    else if (shape[i] === 'cardio' || shape[i] === 'long') cardio += 1
+  }
+  return { lift, cardio }
+}
+
 export function weekStart(date) {
   const d = startOfDay(date)
   // setDate handles the negative rollover into the previous month and year on its own.

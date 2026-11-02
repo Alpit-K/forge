@@ -43,8 +43,6 @@ export const seedPlan = {
 export const DEFAULT_SETTINGS = {
   keepAwake: true,
   sound: true,
-  weeklyLifts: 3,
-  weeklyCardio: 3,
   // Monday-first, one entry per weekday. Kinds: 'lift' | 'cardio' | 'long' | 'rest'.
   // A shape declares the KIND of day, never which session — which lift and which run are
   // derived from history by the coach. It is an input to that calculation, not a set of

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { muscleGroupsOf, plannedSetsPerWeek, coverageDone, coveragePlanned, coverageLevel, coverageDue, coverageRates, coverageLevels } from './muscles.js'
+import { muscleGroupsOf, plannedSetsPerWeek, coverageDone, coveragePlanned, coverageLevel, coverageRates, coverageLevels } from './muscles.js'
 import { getExercise } from '../lib/exercises.js'
 import { seedPlan } from '../lib/seed.js'
 
@@ -96,18 +96,6 @@ describe('coverage', () => {
       customEx,
     )
     expect(Object.values(done).every((g) => g.sets === 0)).toBe(true)
-  })
-
-  it('states planned-by-now as one whole number, so the label, the bar and the shade agree', () => {
-    // A 4-set slot, one session of twelve in: 1.33 would read "1 of 1" over a 75% bar.
-    expect(coverageDue(16, 1, 12)).toBe(1)
-    expect(coverageDue(24, 7, 12)).toBe(14)
-    expect(coverageDue(24, 0, 12)).toBe(0)
-  })
-
-  it('never puts planned-by-now past the block, once its sessions are all done', () => {
-    expect(coverageDue(24, 12, 12)).toBe(24)
-    expect(coverageDue(24, 13, 12)).toBe(24)
   })
 
   it('states sets per week over the span the logs cover, to one decimal', () => {

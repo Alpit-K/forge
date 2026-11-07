@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { recommend, nextSession } from './coach.js'
+import { recommend, nextSession, weekForecast } from './coach.js'
 import { createInitialState } from '../lib/seed.js'
 
 const local = (y, m, d, h = 9, min = 0) => new Date(y, m - 1, d, h, min)
@@ -414,5 +414,36 @@ describe('the rest card counts the week in words', () => {
     const r = recommend(state({ settings, workouts: [lift(iso(...MON))] }), local(...THU))
     expect(r.kind).toBe('rest')
     expect(r.detail).toBe('1 lift · 0 cardio this week')
+  })
+})
+
+describe('weekForecast', () => {
+  it('follows the shape when nothing is owed', () => {
+    expect(weekForecast(state(), local(...MON))).toEqual(['lift', 'cardio', 'lift', 'rest', 'lift', 'cardio', 'cardio'])
+  })
+
+  // The case the strip was changed for: Monday's lift did not happen, so Monday is drawn as
+  // rest and the lift lands on the rest day the coach would offer it on.
+  it('draws a rested day as rest and moves what it owed onto a rest day', () => {
+    expect(weekForecast(state(), local(...TUE))).toEqual(['rest', 'cardio', 'lift', 'lift', 'lift', 'cardio', 'cardio'])
+  })
+
+  it('draws a logged day as what was done, and spends the day it freed', () => {
+    const activities = [run(iso(...MON), 'easy')]
+    expect(weekForecast(state({ activities }), local(...TUE))).toEqual([
+      'cardio',
+      'lift',
+      'lift',
+      'rest',
+      'lift',
+      'cardio',
+      'cardio',
+    ])
+  })
+
+  it('agrees with the coach card about today', () => {
+    const workouts = [lift(iso(...MON))]
+    const now = local(...TUE)
+    expect(weekForecast(state({ workouts }), now)[1]).toBe(recommend(state({ workouts }), now).kind)
   })
 })

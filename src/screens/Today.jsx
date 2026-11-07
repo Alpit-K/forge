@@ -15,7 +15,7 @@ import {
   totalVolume,
   durationSeconds,
 } from '../engine/session.js'
-import { recommend, nextSession, sportNoun } from '../engine/coach.js'
+import { recommend, nextSession, sportNoun, weekForecast } from '../engine/coach.js'
 import { weekDays, dayIndex, weekSummary, shapeCounts } from '../engine/week.js'
 import { getExercise, exerciseName, gifSrc, weightHint, platesOnly, perSide, warmupSteps } from '../lib/exercises.js'
 import { ACTIVITY_TYPES } from '../lib/activities.js'
@@ -112,11 +112,10 @@ function lastEasy(activities, sport, now) {
 // rest day is a small grey dot — the two used to be a grey ring and a grey dot of the same
 // size, which is no distinction at all on a phone.
 //
-// Past and future planned days are drawn IDENTICALLY, on purpose. Drawing yesterday's
-// unfulfilled plan differently is missed-session state by another name, and there is none
-// anywhere in this app. It also used to mean a planned day in the future rendered exactly
-// like a rest day, so the strip could not be read as the week's shape at all.
-function WeekStrip({ days }) {
+// The kind comes from `weekForecast`, not the shape: a past day with nothing logged is rest,
+// and today onwards is what the coach would say, so a rested lift reappears on the day it
+// will actually be offered. A day that did not happen is drawn as rest — never as missed.
+function WeekStrip({ days, forecast }) {
   return (
     <div className="week-strip" aria-label="This week">
       {days.map((d) => {
@@ -125,10 +124,8 @@ function WeekStrip({ days }) {
         // `data-state` is whether it happened; `data-kind` is which of the two it is or was.
         // A long run is the cardio kind here exactly as it is in the week planner: the shape
         // sets four kinds, the strip reports two.
-        const done = d.lifts > 0 ? 'lift' : d.cardio > 0 ? 'cardio' : null
-        const planned = d.planned && d.planned !== 'rest' ? (d.planned === 'lift' ? 'lift' : 'cardio') : null
-        const kind = done || planned
-        const state = done ? 'done' : planned ? 'planned' : 'rest'
+        const kind = forecast[d.index] === 'rest' ? null : forecast[d.index]
+        const state = d.lifts + d.cardio > 0 ? 'done' : kind ? 'planned' : 'rest'
         return (
           <div key={d.index} className="week-day" data-today={d.isToday || undefined}>
             <span className="week-day-letter">{DAY_INITIALS[d.index]}</span>
@@ -240,6 +237,7 @@ function IdleView() {
   // the card and the strip immediately, for the same reason a mistyped set fixes the next
   // target — there are no counters to drift.
   const rec = useMemo(() => recommend(state), [state])
+  const forecast = useMemo(() => weekForecast(state), [state])
   const days = useMemo(
     () => weekDays(workouts, activities, settings.weekShape || [], new Date()),
     [workouts, activities, settings.weekShape],
@@ -434,7 +432,7 @@ function IdleView() {
         {/* The card is the way in to the week detail — the strip and the counts are a
             summary, and a summary you cannot open is a summary you have to trust. */}
         <button type="button" className="week-card" onClick={() => setWeekOpen(true)}>
-          <WeekStrip days={days} />
+          <WeekStrip days={days} forecast={forecast} />
           <div className="week-counts tnum">
             <span>
               Lifts {week.lifts} of {targets.lift}

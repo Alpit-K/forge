@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useStore } from '../store.js'
 import { weekDays, weekSummary, recentWeeks } from '../engine/week.js'
+import { weekForecast } from '../engine/coach.js'
 import {
   ACTIVITY_TYPES,
   activityName,
@@ -54,6 +55,7 @@ export default function WeekSheet({ onClose }) {
   const workouts = useStore((s) => s.workouts)
   const activities = useStore((s) => s.activities)
   const settings = useStore((s) => s.settings)
+  const state = useStore((s) => s)
 
   const now = useMemo(() => new Date(), [])
   const week = useMemo(() => weekSummary(workouts, activities, now), [workouts, activities, now])
@@ -61,6 +63,9 @@ export default function WeekSheet({ onClose }) {
     () => weekDays(workouts, activities, settings.weekShape || [], now),
     [workouts, activities, settings.weekShape, now],
   )
+  // The same kinds the strip draws, so an empty day reads "Rest" here exactly where the strip
+  // shows a rest dot.
+  const forecast = useMemo(() => weekForecast(state, now), [state, now])
   const weeks = useMemo(
     () => recentWeeks(workouts, activities, now, WEEKS),
     [workouts, activities, now],
@@ -117,7 +122,7 @@ export default function WeekSheet({ onClose }) {
                 {detail.length > 0 ? (
                   detail.map((line, i) => <span key={i}>{line}</span>)
                 ) : (
-                  <span className="wk-day-empty">{d.planned === 'rest' ? 'Rest' : '—'}</span>
+                  <span className="wk-day-empty">{forecast[d.index] === 'rest' ? 'Rest' : '—'}</span>
                 )}
               </span>
             </div>

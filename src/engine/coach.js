@@ -6,7 +6,7 @@
 // asked for that did not happen is simply absent from history, and the next call reads the
 // history that actually exists. There is no missed state anywhere in this file by design.
 
-import { dayIndex, weekSummary, rollingSummary, daysBetween, summarise, startOfDay, addDays, shapeCounts } from './week.js'
+import { dayIndex, weekSummary, rollingSummary, daysBetween, summarise, startOfDay, addDays, shapeCounts, weekDays } from './week.js'
 import { lastDoneByRotation } from './session.js'
 
 export const ROLLING_DAYS = 7
@@ -273,4 +273,33 @@ export function nextSession(state, now = new Date()) {
     if (rec.kind !== 'rest') return { date, days: i, rec }
   }
   return null
+}
+
+// The week as the strip draws it, Monday first, one of `lift`/`cardio`/`rest` a day. A day
+// with something logged is what was done; an earlier day with nothing logged is rest; today
+// and the days after are what recommend() would say on each, so a lift rested on Monday
+// reappears on the rest day the coach would actually offer it on, and the strip and the card
+// cannot disagree.
+//
+// Walking forward, each forecast day is assumed done as forecast, or Sunday would be asked
+// for every session Thursday to Saturday already cover. The assumed sessions live in a copy
+// of the arrays and nowhere else — this is a forecast like nextSession, recomputed per render,
+// never stored and never compared against what happened.
+export function weekForecast(state, now = new Date()) {
+  const todayIdx = dayIndex(now)
+  const shape = Array.isArray(state.settings.weekShape) ? state.settings.weekShape : []
+  const assumed = { ...state, workouts: [...state.workouts], activities: [...state.activities] }
+  return weekDays(state.workouts, state.activities, shape, now).map((d) => {
+    if (d.lifts > 0) return 'lift'
+    if (d.cardio > 0) return 'cardio'
+    if (d.index < todayIdx) return 'rest'
+    const { kind } = recommend(assumed, d.index === todayIdx ? now : d.date)
+    const at = new Date(d.date.getFullYear(), d.date.getMonth(), d.date.getDate(), 12).toISOString()
+    if (kind === 'lift') {
+      assumed.workouts.push({ id: `forecast-${d.index}`, finishedAt: at, freeform: true, rotationIndex: null, entries: [] })
+    } else if (kind === 'cardio') {
+      assumed.activities.push({ id: `forecast-${d.index}`, at, type: state.settings.cardioSport, intensity: 'easy' })
+    }
+    return kind
+  })
 }

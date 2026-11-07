@@ -130,16 +130,25 @@ function schedule() {
 // `suspended`, after iOS throttled us in the background, and `interrupted` — WebKit's own
 // state, not in the spec — when another app took the audio session. Both answer to resume().
 // It is asynchronous, so the cue arrives a few milliseconds late rather than not at all.
+//
+// **A resume that is not allowed yet does not reject — it waits**, until something lets the
+// context run: the next tap anywhere, the other app releasing the session, a return to the
+// foreground. That can be minutes. Scheduling on resolution alone played a rest cue long
+// after the rest had ended, and every rest that ended stalled queued one more. So a cue whose
+// resume took longer than `STALE_MS` is dropped: a late cue is always wrong.
+const STALE_MS = 1500
+
 export function playCue() {
   if (!ctx) return
   if (ctx.state === 'running') {
     schedule()
     return
   }
+  const asked = Date.now()
   ctx
     .resume()
     .then(() => {
-      if (ctx.state === 'running') schedule()
+      if (ctx.state === 'running' && Date.now() - asked <= STALE_MS) schedule()
     })
     .catch(() => {
       // Refused outside a gesture, or in Low Power Mode. Nothing further to try.

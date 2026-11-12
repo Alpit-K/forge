@@ -1,11 +1,14 @@
 import { useState } from 'react'
-import { useStore } from '../store.js'
+import { useStore, TRIM_SETS } from '../store.js'
+import { minutesLeft } from '../engine/session.js'
 import { getExercise, exerciseName } from '../lib/exercises.js'
 import NavBar from './NavBar.jsx'
 import { Thumb } from './ExerciseImage.jsx'
 import Sheet, { ActionSheet } from './Sheet.jsx'
 import ExerciseBrowser from './ExerciseBrowser.jsx'
 import MuscleCoverage from './MuscleCoverage.jsx'
+import OwedList from './OwedList.jsx'
+import { Group, Row } from './List.jsx'
 import Icon from './Icon.jsx'
 
 // `onStart` is passed only while a custom workout is being built: a row then opens its
@@ -14,6 +17,7 @@ import Icon from './Icon.jsx'
 export default function SessionOverview({ onClose, onEnd, onStart }) {
   const active = useStore((s) => s.active)
   const customEx = useStore((s) => s.customEx)
+  const workouts = useStore((s) => s.workouts)
   const [rowIdx, setRowIdx] = useState(null)
   const [swapping, setSwapping] = useState(null)
   const [adding, setAdding] = useState(false)
@@ -28,6 +32,12 @@ export default function SessionOverview({ onClose, onEnd, onStart }) {
 
   const selectedEx = rowIdx != null ? active.exercises[rowIdx] : null
   const removable = selectedEx ? selectedEx.performed.filter((s) => s.done).length === 0 : false
+
+  // Short on time is offered only once a workout is under way, never while one is being
+  // built. Derived per render: whether anything carries `cut` is the whole trimmed state.
+  const trimmed = active.exercises.some((e) => e.cut)
+  const trimmable = active.exercises.some((e) => e.performed.length > TRIM_SETS && !e.performed.some((s) => s.done))
+  const left = trimmed ? minutesLeft(active, workouts) : null
 
   return (
     <>
@@ -80,6 +90,27 @@ export default function SessionOverview({ onClose, onEnd, onStart }) {
             )
           })}
         </div>
+        {!onStart && trimmed && (
+          <div>
+            <p className="trim-note tnum">
+              Trimmed to {TRIM_SETS} sets each{left != null ? ` · about ${left} min left` : ''}
+            </p>
+            <button type="button" className="btn" onClick={() => useStore.getState().undoTrim()}>
+              Undo — back to full sets
+            </button>
+          </div>
+        )}
+        {!onStart && !trimmed && trimmable && (
+          <Group>
+            <Row
+              title="Short on time"
+              subtitle={`Trim what you have not started to ${TRIM_SETS} sets`}
+              onClick={() => useStore.getState().trimUntouched()}
+            />
+          </Group>
+        )}
+        {/* A light day starts from what the block is owed: one tap each, or all of them. */}
+        {onStart && <OwedList onAdd={(id) => useStore.getState().addExerciseToActive(id)} />}
         <button type="button" className="btn" onClick={() => setAdding(true)}>
           Add exercise
         </button>

@@ -28,6 +28,8 @@ function App() {
       </main>
       {/* A workout is a modal flow — End and Finish are its only exits. */}
       {!active && <TabBar tab={tab} onChange={setTab} />}
+      {/* The one live region; lib/announce.js writes to it. */}
+      <div id="announcer" className="sr-only" role="status" />
     </div>
   )
 }

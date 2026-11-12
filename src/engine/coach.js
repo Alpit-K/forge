@@ -129,21 +129,24 @@ export function recommend(state, now = new Date()) {
   const todayIdx = dayIndex(now)
   const planned = shape[todayIdx] || 'rest'
 
-  const week = weekSummary(workouts, activities, now)
-  const rolling = rollingSummary(workouts, activities, now, ROLLING_DAYS)
+  const sport = settings.cardioSport
+  const week = weekSummary(workouts, activities, now, sport)
+  const rolling = rollingSummary(workouts, activities, now, ROLLING_DAYS, sport)
 
-  const today = summarise(workouts, activities, startOfDay(now), addDays(startOfDay(now), 1))
+  const today = summarise(workouts, activities, startOfDay(now), addDays(startOfDay(now), 1), sport)
   const liftDays = daysBetween(lastAt(workouts, 'finishedAt', now), now)
   const hardDays = daysBetween(lastAt(activities, 'at', now, (a) => a.intensity === 'hard'), now)
 
   // Already trained today. Nothing else is offered, and the detail says what you did rather
   // than what is missing — the card is a suggestion for an empty day, not a prompt for a
   // second session. The reason line does NOT repeat that it was logged: the detail directly
-  // above it already says so, and more precisely.
-  if (today.lifts + today.cardio > 0) {
+  // above it already says so, and more precisely. Only what fills a target counts as having
+  // trained: a walk logged this morning, or an extra session, does not take the day's
+  // session off the card.
+  if (today.liftsCounted + today.cardioCounted > 0) {
     const parts = []
-    if (today.lifts > 0) parts.push(`${today.lifts} ${today.lifts === 1 ? 'session' : 'sessions'}`)
-    if (today.cardio > 0) parts.push(`${today.cardio} ${today.cardio === 1 ? 'activity' : 'activities'}`)
+    if (today.liftsCounted > 0) parts.push(`${today.liftsCounted} ${today.liftsCounted === 1 ? 'session' : 'sessions'}`)
+    if (today.cardioCounted > 0) parts.push(`${today.cardioCounted} ${today.cardioCounted === 1 ? 'activity' : 'activities'}`)
     return {
       ...rest('The rest of the day is yours.', `${parts.join(' · ')} logged`),
       planned,
@@ -153,8 +156,8 @@ export function recommend(state, now = new Date()) {
   }
 
   const targets = shapeCounts(shape)
-  const liftsShort = Math.max(0, targets.lift - week.lifts)
-  const cardioShort = Math.max(0, targets.cardio - week.cardio)
+  const liftsShort = Math.max(0, targets.lift - week.liftsCounted)
+  const cardioShort = Math.max(0, targets.cardio - week.cardioCounted)
   const daysLeft = 6 - todayIdx
 
   // The weekly target is a count and the shape is an input, so a shortfall the days ahead
@@ -177,7 +180,7 @@ export function recommend(state, now = new Date()) {
   const liftsSpare = liftsShort > 0 && remaining.lift === liftsShort
   const cardioSpare = cardioShort > 0 && remaining.cardio === cardioShort
   const days = (n) => `${n} ${n === 1 ? 'day' : 'days'}`
-  const weekSoFar = `${week.lifts} ${week.lifts === 1 ? 'lift' : 'lifts'} · ${week.cardio} cardio this week`
+  const weekSoFar = `${week.liftsCounted} ${week.liftsCounted === 1 ? 'lift' : 'lifts'} · ${week.cardioCounted} cardio this week`
 
   const decide = () => {
     if (planned === 'lift') {
@@ -289,9 +292,11 @@ export function weekForecast(state, now = new Date()) {
   const todayIdx = dayIndex(now)
   const shape = Array.isArray(state.settings.weekShape) ? state.settings.weekShape : []
   const assumed = { ...state, workouts: [...state.workouts], activities: [...state.activities] }
-  return weekDays(state.workouts, state.activities, shape, now).map((d) => {
+  return weekDays(state.workouts, state.activities, shape, now, state.settings.cardioSport).map((d) => {
     if (d.lifts > 0) return 'lift'
-    if (d.cardio > 0) return 'cardio'
+    // What recommend() counts, or a day with only a walk on it would be drawn as done while
+    // the card beside it still asks for the session.
+    if (d.cardioCounted > 0) return 'cardio'
     if (d.index < todayIdx) return 'rest'
     const { kind } = recommend(assumed, d.index === todayIdx ? now : d.date)
     const at = new Date(d.date.getFullYear(), d.date.getMonth(), d.date.getDate(), 12).toISOString()

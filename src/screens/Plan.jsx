@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useStore } from '../store.js'
 import { getExercise, exerciseName } from '../lib/exercises.js'
-import { incrementFor } from '../engine/progression.js'
+import { incrementFor, ownWeightStart, weightLogs } from '../engine/progression.js'
 import { exerciseHistory, stalledAt, STALL_SESSIONS, typicalMinutes } from '../engine/session.js'
 import { plannedSetsPerWeek } from '../engine/muscles.js'
 import { shapeCounts } from '../engine/week.js'
@@ -142,6 +142,21 @@ export default function Plan() {
   const [swapping, setSwapping] = useState(null)
   const [coverageOpen, setCoverageOpen] = useState(false)
 
+  // The stall note counts from the last weight you chose yourself, so a deliberate
+  // step-down is a fresh start rather than four sessions of "no gain".
+  const stallFor = (slot, id) => {
+    const rules = {
+      repsMin: slot.repsMin,
+      repsMax: slot.repsMax,
+      prescribed: slot.sets,
+      increment: incrementFor(slot, getExercise(id, customEx)),
+    }
+    // Both read the same logs, or the index from one would slice the other at the wrong place.
+    const logs = weightLogs(state.workouts, state.plan, state.swaps, id)
+    const from = ownWeightStart(id, rules, logs)
+    return stalledAt(exerciseHistory(logs, id).slice(from))
+  }
+
   // Once per exercise: a lift in two sessions is one lift with one history.
   const seen = new Set()
   const stalled = []
@@ -150,7 +165,7 @@ export default function Plan() {
       const id = swaps[e.exerciseId] || e.exerciseId
       if (seen.has(id)) return
       seen.add(id)
-      const kg = stalledAt(exerciseHistory(state.workouts, id))
+      const kg = stallFor(e, id)
       if (kg == null) return
       const ex = getExercise(id, customEx)
       stalled.push({ sessionIdx: si, exerciseIdx: ei, ex, name: exerciseName(ex), kg, session: session.name })
@@ -213,7 +228,7 @@ export default function Plan() {
               {session.exercises.map((e, ei) => {
                 const effectiveId = swaps[e.exerciseId] || e.exerciseId
                 const ex = getExercise(effectiveId, customEx)
-                const stall = stalledAt(exerciseHistory(state.workouts, effectiveId))
+                const stall = stallFor(e, effectiveId)
                 return (
                   <Row
                     key={`${si}-${e.exerciseId}-${ei}`}

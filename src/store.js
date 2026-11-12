@@ -8,6 +8,7 @@ import {
   incrementFor,
   findSlotFor,
   findTemplateEntry,
+  weightLogs,
 } from './engine/progression.js'
 import { getExercise } from './lib/exercises.js'
 import {
@@ -19,6 +20,8 @@ import {
   continueBlock,
   advanceProgress,
   byFinish,
+  nextUnfinished,
+  heaviestDone,
 } from './engine/session.js'
 import { acquireWakeLock, releaseWakeLock } from './lib/wakeLock.js'
 import { ensureAudioContext } from './lib/audio.js'
@@ -29,6 +32,9 @@ export const STATE_KEY = 'forge_state_v1'
 // plan slot. Every plan slot carries its own `restSec`, which is what the timer reads.
 const NEW_EXERCISE_REST_SEC = 90
 
+// What "Short on time" trims an unstarted exercise to.
+export const TRIM_SETS = 2
+
 function newId() {
   if (globalThis.crypto && crypto.randomUUID) return crypto.randomUUID()
   return `id-${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -36,12 +42,15 @@ function newId() {
 
 // The prefill rule, in one place: reps from last session on hold, else repsMin; weight from
 // the target. startWorkout, addExerciseToActive and swapMidWorkout all fill sets from it and
-// so cannot drift apart.
+// so cannot drift apart. A hold copies reps only from a set done at the working weight — a
+// lighter set's reps are not reps at this weight.
 function prefilledSets(count, target) {
   const lastSets = target.lastSets || []
+  const base = heaviestDone(lastSets)
   return Array.from({ length: count }, (_, i) => {
     const last = lastSets[i]
-    const reps = target.kind === 'hold' && last && last.done ? last.reps : target.repsMin
+    const reps =
+      target.kind === 'hold' && last && last.done && last.weightKg === base ? last.reps : target.repsMin
     return { reps, weightKg: target.weightKg, done: false }
   })
 }
@@ -78,7 +87,7 @@ function plannedEntries(state, rotationIndex) {
 // its own history through the same decision a swap uses — the add sheet shows that
 // history, so landing on "first time" beneath it contradicted the screen. An exercise with
 // nothing logged still comes back first-time, which is what targetFor returns.
-const UNPLANNED = { sets: 3, repsMin: 8, repsMax: 12, restSec: NEW_EXERCISE_REST_SEC }
+export const UNPLANNED = { sets: 3, repsMin: 8, repsMax: 12, restSec: NEW_EXERCISE_REST_SEC }
 
 function unplannedEntry(exerciseId, state) {
   const rules = {
@@ -267,6 +276,8 @@ export function createStore(storage) {
           sessionIndex: s.progress.sessionIndex,
           rotationIndex: null,
           freeform: true,
+          // On top of the plan unless ticked in at the finish — see sessionsDone.
+          extra: true,
           building: true,
           templateName: 'Custom workout',
           currentIndex: 0,
@@ -374,11 +385,23 @@ export function createStore(storage) {
     // Logs a set. Rest starts only when there is another set of THIS exercise still to do —
     // finishing the last one goes to the exercise summary instead, which is where the screen
     // advances from. It never moves currentIndex itself; goToExercise does that.
+    //
+    // The reps just done carry forward to the sets not yet ticked, as a loaded weight does:
+    // set 2 nearly always lands on what set 1 got, and starting it back on the prefill was
+    // about half the stepper taps in a session. The time is stamped for the same reason the
+    // weight is recorded — it is what happened, and it cannot be worked out afterwards.
     tickSet(exerciseIdx, setIdx) {
       set((s) => {
         if (!s.active) return {}
         const ex = s.active.exercises[exerciseIdx]
-        const performed = ex.performed.map((st, i) => (i === setIdx ? { ...st, done: true } : st))
+        const reps = ex.performed[setIdx].reps
+        const performed = ex.performed.map((st, i) =>
+          i === setIdx
+            ? { ...st, done: true, at: new Date().toISOString() }
+            : i > setIdx && !st.done
+              ? { ...st, reps }
+              : st,
+        )
         const exerciseDone = performed.every((st) => st.done)
         return {
           active: {
@@ -397,7 +420,11 @@ export function createStore(storage) {
       set((s) => {
         if (!s.active) return {}
         const ex = s.active.exercises[exerciseIdx]
-        const performed = ex.performed.map((st, i) => (i === setIdx ? { ...st, done: false } : st))
+        const performed = ex.performed.map((st, i) => {
+          if (i !== setIdx) return st
+          const { at: _at, ...rest } = st
+          return { ...rest, done: false }
+        })
         return {
           active: {
             ...s.active,
@@ -424,6 +451,56 @@ export function createStore(storage) {
         if (!s.active) return {}
         const i = Math.max(0, Math.min(s.active.exercises.length - 1, idx))
         return { active: { ...s.active, currentIndex: i, restStartedAt: null, restDuration: null } }
+      })
+    },
+
+    // The rack is taken: leave this exercise in the session and go to the next one with a
+    // set still to do. It moves through goToExercise's own rule — rest is cleared — and does
+    // nothing when this is the only exercise left.
+    doLater() {
+      set((s) => {
+        if (!s.active) return {}
+        const next = nextUnfinished(s.active.exercises, s.active.currentIndex)
+        if (next < 0) return {}
+        return { active: { ...s.active, currentIndex: next, restStartedAt: null, restDuration: null } }
+      })
+    },
+
+    // Short on time: every exercise not yet started drops to TRIM_SETS sets, so the session
+    // ends with two sets of everything rather than three of most and none of one. It is
+    // removeSet's rule applied across the session — `active` only, the plan untouched, and
+    // progression still judges against the prescribed count, so a trimmed lift is one set
+    // short and holds. The sets cut are kept on the entry as `cut` so undoTrim can put back
+    // exactly what was there; `cut` lives on `active` only and never reaches a log.
+    trimUntouched() {
+      set((s) => {
+        if (!s.active) return {}
+        return {
+          active: {
+            ...s.active,
+            exercises: s.active.exercises.map((e) =>
+              e.cut || e.performed.length <= TRIM_SETS || e.performed.some((p) => p.done)
+                ? e
+                : { ...e, performed: e.performed.slice(0, TRIM_SETS), cut: e.performed.slice(TRIM_SETS) },
+            ),
+          },
+        }
+      })
+    },
+
+    undoTrim() {
+      set((s) => {
+        if (!s.active) return {}
+        return {
+          active: {
+            ...s.active,
+            exercises: s.active.exercises.map((e) => {
+              if (!e.cut) return e
+              const { cut, ...rest } = e
+              return { ...rest, performed: [...e.performed, ...cut] }
+            }),
+          },
+        }
       })
     },
 
@@ -460,7 +537,7 @@ export function createStore(storage) {
           prescribed: entry.sets,
           increment: incrementFor(home && findTemplateEntry(s.plan, home.slotId, home.rotationIndex), ex),
         }
-        const target = targetFor(newId, rules, s.workouts)
+        const target = targetFor(newId, rules, weightLogs(s.workouts, s.plan, s.swaps, newId))
         const fill = prefilledSets(entry.performed.length, target)
         return {
           active: {
@@ -561,6 +638,38 @@ export function createStore(storage) {
                     ? { ...e, sets: e.sets.map((st, si) => (si === setIdx ? { ...st, ...patch } : st)) }
                     : e,
                 ),
+              }
+            : w,
+        ),
+      }))
+    },
+
+    // Why an exercise was left untouched, chosen on the finish summary from SKIP_REASONS.
+    // Null clears it. Only an entry with nothing ticked can carry one.
+    // Whether a custom workout uses up one of the block's sessions. Absent `extra` is what
+    // counts, so every log written before the flag existed keeps counting. A rotation
+    // session always counts.
+    setCountsTowardBlock(workoutId, counts) {
+      set((s) => ({
+        workouts: s.workouts.map((w) => {
+          if (w.id !== workoutId || !w.freeform) return w
+          const { extra: _old, ...rest } = w
+          return counts ? rest : { ...rest, extra: true }
+        }),
+      }))
+    },
+
+    setSkipReason(workoutId, exerciseId, reason) {
+      set((s) => ({
+        workouts: s.workouts.map((w) =>
+          w.id === workoutId
+            ? {
+                ...w,
+                entries: w.entries.map((e) => {
+                  if (e.exerciseId !== exerciseId || e.sets.some((st) => st.done)) return e
+                  const { skipReason: _old, ...rest } = e
+                  return reason ? { ...rest, skipReason: reason } : rest
+                }),
               }
             : w,
         ),

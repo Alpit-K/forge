@@ -66,6 +66,7 @@ export default function WorkoutTimeSheet({ workout, onLogged, onClose }) {
                 type="button"
                 className="chip"
                 data-active={rotationIndex === i}
+                aria-pressed={rotationIndex === i}
                 onClick={() => setRotationIndex(i)}
               >
                 {day.name}

@@ -39,6 +39,7 @@ function Chips({ label, options, value, onChange }) {
             type="button"
             className="chip"
             data-active={value === opt}
+            aria-pressed={value === opt}
             onClick={() => onChange(value === opt ? null : opt)}
           >
             {opt}
@@ -97,8 +98,9 @@ function mineSubtitle({ stats }) {
 // and target options are derived from the already-filtered list, most common first, so every
 // visible combination has results. `suggestFor` is the exercise being swapped out; it
 // puts a short list of like-for-like replacements above the full one, shown only while no
-// search or filter is set — once you are looking for something, they are in the way.
-export default function ExerciseBrowser({ onSelect, selectLabel, suggestFor, exclude, mine = false }) {
+// search or filter is set — once you are looking for something, they are in the way. `lead`
+// sits above the search on the list and steps aside while an exercise is being previewed.
+export default function ExerciseBrowser({ onSelect, selectLabel, suggestFor, exclude, mine = false, lead }) {
   const customEx = useStore((s) => s.customEx)
   const workouts = useStore((s) => s.workouts)
   const [search, setSearch] = useState('')
@@ -183,6 +185,7 @@ export default function ExerciseBrowser({ onSelect, selectLabel, suggestFor, exc
 
   return (
     <div>
+      {lead}
       <label className="search-field">
         <Icon name="search" size={17} />
         <input

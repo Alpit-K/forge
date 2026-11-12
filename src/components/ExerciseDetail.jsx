@@ -31,6 +31,14 @@ export default function ExerciseDetail({ exercise }) {
   const slot = findSlotFor(state.plan, state.swaps, exercise.id)
   const target = slot ? nextTarget(slot.slotId, state, slot.rotationIndex) : null
   const recent = history.slice(-RECENT).reverse()
+  const trend = history.filter((h) => h.topWeight != null).map((h) => ({ value: h.topWeight, at: h.at }))
+  // Where the trend crosses into a new block. A history entry's `at` is its log's
+  // `finishedAt`, which is how each plotted session finds the block it was stamped with.
+  const blockOf = trend.map((p) => state.workouts.find((w) => w.finishedAt === p.at)?.blockIndex)
+  const marks = trend
+    .map((_, i) => i)
+    .filter((i) => i > 0 && blockOf[i] != null && blockOf[i - 1] != null && blockOf[i] !== blockOf[i - 1])
+    .map((i) => ({ index: i, label: `Block ${blockOf[i] + 1}` }))
 
   return (
     <>
@@ -74,10 +82,7 @@ export default function ExerciseDetail({ exercise }) {
       {recent.length > 0 && (
         <>
           <div className="caption">Recent</div>
-          <Sparkline
-            format={(kg) => `${kg} kg`}
-            points={history.filter((h) => h.topWeight != null).map((h) => ({ value: h.topWeight, at: h.at }))}
-          />
+          <Sparkline format={(kg) => `${kg} kg`} points={trend} marks={marks} />
           <div className="list">
             {recent.map((r) => (
               <div className="ex-session" key={r.at}>

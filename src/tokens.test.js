@@ -67,6 +67,8 @@ const accentBright = parse(token('accent-bright'))
 const onAccent = parse(token('on-accent'))
 const success = parse(token('success'))
 const danger = parse(token('danger'))
+const heat = parse(token('heat'))
+const heatDim = over(parse(token('heat-dim')), bg)
 
 // The card is not one colour. --surface-sheen lifts its top edge, and that is where a row
 // at the head of a list draws its text, so it is the worst case for every pair on a card.
@@ -113,6 +115,11 @@ describe('text pairs meet WCAG AA', () => {
     // rows, so it is held to the text bar even where it is currently only drawn as a glyph.
     ['cat-cardio on card', catCardio, card],
     ['cat-cardio on lit card top', catCardio, cardTop],
+    // The rest countdown's last ten seconds, and the count and its "/ 12" on the block
+    // ring's warm disc.
+    ['heat on ground', heat, bg],
+    ['label on heat-dim', label, heatDim],
+    ['label-secondary on heat-dim', labelSecondary, heatDim],
   ]
   for (const [name, fg, base] of pairs) {
     it(`${name} clears 4.5:1`, () => {
@@ -150,6 +157,8 @@ describe('graphical objects meet 3:1', () => {
     ['planned-day ring on card', accent, card],
     // The coverage figure's full shade — a muscle on plan — on the sheet it is drawn in.
     ['coverage full shade on sheet', parse(resolve(token('cov-4'))), card],
+    // The finish summary's sparks and the block-complete ring, both on the ground.
+    ['heat mark on ground', heat, bg],
   ]
   for (const [name, fg, base] of pairs) {
     it(`${name} clears 3:1`, () => {
@@ -171,7 +180,14 @@ describe('surfaces read as raised', () => {
   // of 0.2 the two measured 1.04:1 and a lightly trained muscle looked untrained.
   it('the first coverage shade stands off an untrained muscle', () => {
     const firstShade = over(parse(token('cov-1')), card)
-    expect(ratio(firstShade, parse(resolve(token('cov-0'))))).toBeGreaterThanOrEqual(1.2)
+    expect(ratio(firstShade, parse(resolve(token('cov-0'))))).toBeGreaterThanOrEqual(1.3)
+  })
+  // The shades are opaque steps now, and each has to be told from the one below it on the
+  // figure — alphas of one violet read as a single mid-violet in practice.
+  it('each coverage shade stands off the one below it', () => {
+    for (const n of [2, 3, 4]) {
+      expect(ratio(parse(resolve(token(`cov-${n}`))), parse(resolve(token(`cov-${n - 1}`))))).toBeGreaterThanOrEqual(1.25)
+    }
   })
   it('the sheen lifts the card top without reaching the next surface', () => {
     expect(luminance(cardTop)).toBeGreaterThan(luminance(card))
@@ -233,6 +249,14 @@ describe('the figures recorded in the stylesheet comments are true', () => {
     ['planner cardio glyph on its tile', ratio(catCardio, cardioTile), 3.39],
     ['label-secondary on tertiary', ratio(labelSecondary, tertiary), 4.97],
     ['danger on tertiary', ratio(danger, tertiary), 3.73],
+    ['heat on ground', ratio(heat, bg), 8.35],
+    ['heat on card', ratio(heat, card), 6.68],
+    ['heat-dim on ground', ratio(heatDim, bg), 1.26],
+    ['label on heat-dim', ratio(label, heatDim), 13.87],
+    // The coverage figure's four shades on the sheet, and each against the step below it.
+    ...[1.88, 3.06, 4.85, 7.54].map((claimed, i) => [`coverage shade ${i + 1} on sheet`, ratio(parse(resolve(token(`cov-${i + 1}`))), card), claimed]),
+    ...[1.35, 1.63, 1.59, 1.55].map((claimed, i) => [`coverage shade ${i + 1} off the step below`, ratio(parse(resolve(token(`cov-${i + 1}`))), parse(resolve(token(`cov-${i}`)))), claimed]),
+    ['planned-untouched outline on its fill', ratio(parse(token('cov-2')), parse(resolve(token('cov-0')))), 2.2],
   ]
   for (const [name, actual, claimed] of recorded) {
     it(`${name} is ${claimed}:1`, () => {

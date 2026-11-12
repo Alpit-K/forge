@@ -59,15 +59,35 @@ export default function RestTimer({ restStartedAt, restSec, sound, onAdjust, onS
   if (!restStartedAt) return null
   const remaining = Math.max(0, restSec - elapsed)
   const done = remaining <= 0
+  // The last ten seconds. The tip and the numerals warm to --heat and the caption changes
+  // word, so the state is said in words as well as hue — a colour transition and nothing
+  // else, because this is the one motion in the app that does not answer a tap.
+  const ending = !done && remaining <= 10
+
+  // One tick per 15 s of this rest, a longer one on each whole minute, placed where the
+  // ring's tip will be at that much time left — so a 90 s rest has six, and ±15 moves them.
+  const ticks = []
+  for (let t = 0; t < restSec; t += 15) ticks.push({ t, long: t % 60 === 0 })
 
   return (
-    <div className="rest-view">
+    <div className="rest-view" data-ending={ending || undefined}>
       <div className="rest-main">
-        <ProgressRing fraction={restSec > 0 ? remaining / restSec : 0}>
-          <div className="rest-caption">Rest</div>
-          <div className={`rest-time tnum${done ? ' complete' : ''}`}>{done ? 'Done' : fmtRest(remaining)}</div>
-          <div className="rest-of tnum">of {fmtRest(restSec)}</div>
-        </ProgressRing>
+        <div className="rest-dial">
+          {ticks.map(({ t, long }) => (
+            <span
+              key={t}
+              className="rest-tick"
+              data-long={long || undefined}
+              style={{ '--a': `${(t / restSec) * 360}deg` }}
+              aria-hidden="true"
+            />
+          ))}
+          <ProgressRing fraction={restSec > 0 ? remaining / restSec : 0}>
+            <div className="rest-caption">{ending ? 'Get set' : 'Rest'}</div>
+            <div className={`rest-time tnum${done ? ' complete' : ''}`}>{done ? 'Done' : fmtRest(remaining)}</div>
+            <div className="rest-of tnum">of {fmtRest(restSec)}</div>
+          </ProgressRing>
+        </div>
 
         {children}
       </div>

@@ -105,8 +105,14 @@ export function plannedSetsPerWeek(plan, swaps, customEx, weeklyLifts) {
 // What the logs hold: completed sets per group, and how many sessions each exercise was
 // done in. An entry with nothing ticked was in the workout and never performed — no sets,
 // and not listed either.
+//
+// `indirect` is the sets that reached the group through another lift's secondary muscles —
+// the pressing behind "triceps: 3". The sheet prints it as secondary text at INDIRECT_CREDIT
+// a set; the bar, the target and the shading stay direct only.
+export const INDIRECT_CREDIT = 0.5
+
 export function coverageDone(workouts, customEx) {
-  const out = Object.fromEntries(MUSCLE_GROUPS.map((g) => [g, { sets: 0, exercises: new Map() }]))
+  const out = Object.fromEntries(MUSCLE_GROUPS.map((g) => [g, { sets: 0, indirect: 0, exercises: new Map() }]))
   for (const w of workouts) {
     for (const e of w.entries) {
       const done = e.sets.filter((s) => s && s.done).length
@@ -114,6 +120,7 @@ export function coverageDone(workouts, customEx) {
       if (!groups) continue
       const row = out[groups.direct]
       row.sets += done
+      for (const g of groups.indirect) out[g].indirect += done
       const x = row.exercises.get(e.exerciseId) || { exerciseId: e.exerciseId, sessions: 0 }
       x.sessions += 1
       row.exercises.set(e.exerciseId, x)

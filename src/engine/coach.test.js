@@ -65,6 +65,13 @@ describe('already trained today', () => {
     expect(r.detail).toBe('1 session logged')
   })
 
+  // Extra is extra: a bonus session does not take the planned lift off the card.
+  it('still offers the planned lift after an extra session', () => {
+    const extra = { ...lift(iso(2026, 8, 31, 7, 0)), freeform: true, extra: true, rotationIndex: null }
+    const r = recommend(state({ workouts: [extra] }), local(2026, 8, 31, 19, 0))
+    expect(r.kind).toBe('lift')
+  })
+
   it('counts an activity as having trained, not just a lift', () => {
     const r = recommend(state({ activities: [run(iso(2026, 9, 1, 7, 0))] }), local(2026, 9, 1, 19, 0))
     expect(r.kind).toBe('rest')
@@ -445,5 +452,33 @@ describe('weekForecast', () => {
     const workouts = [lift(iso(...MON))]
     const now = local(...TUE)
     expect(weekForecast(state({ workouts }), now)[1]).toBe(recommend(state({ workouts }), now).kind)
+  })
+})
+
+// A walk is logged and shown like anything else, but it does not fill the cardio target
+// (owner's decision, 2026-11-10).
+describe('a walk does not stand in for the session', () => {
+  const walk = (at) => ({ id: at, type: 'walk', at, minutes: 40 })
+
+  it('still suggests the cardio day after a walk that morning', () => {
+    const r = recommend(state({ activities: [walk(iso(...TUE, 7))] }), local(...TUE))
+    expect(r.kind).toBe('cardio')
+  })
+
+  it('does not count a walk toward the week', () => {
+    const r = recommend(state({ activities: [walk(iso(...MON, 18))] }), local(...TUE))
+    expect(r.week.cardio).toBe(1)
+    expect(r.week.cardioCounted).toBe(0)
+  })
+
+  it('draws a day with only a walk on it as the forecast, not as cardio done', () => {
+    const days = weekForecast(state({ activities: [walk(iso(...MON, 7))] }), local(...MON))
+    expect(days[0]).toBe('lift')
+  })
+
+  it('counts a walk when walking is the chosen sport', () => {
+    const s = state({ activities: [walk(iso(...TUE, 7))] })
+    s.settings = { ...s.settings, cardioSport: 'walk' }
+    expect(recommend(s, local(...TUE)).kind).toBe('rest')
   })
 })

@@ -83,6 +83,17 @@ describe('coverage', () => {
     expect(done.Quads.exercises.get('0043').sessions).toBe(2)
   })
 
+  it('tallies the sets that reached a group indirectly, apart from its direct ones', () => {
+    const squat = muscleGroupsOf(getExercise('0043', []))
+    expect(squat.indirect.length).toBeGreaterThan(0)
+    const done = coverageDone([log([{ exerciseId: '0043', sets: sets(true, true, false) }])], [])
+    for (const g of squat.indirect) {
+      expect(done[g].indirect).toBe(2)
+      expect(done[g].sets).toBe(0)
+    }
+    expect(done[squat.direct].indirect).toBe(0)
+  })
+
   it('leaves out an entry with nothing ticked', () => {
     const done = coverageDone([log([{ exerciseId: '0739', sets: sets(false, false, false) }])], [])
     expect(done.Quads.sets).toBe(0)

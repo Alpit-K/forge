@@ -8,7 +8,10 @@ import {
   setsCompleted,
   durationSeconds,
   sessionsDone,
+  customSessions,
+  extraSessions,
   isBlockComplete,
+  SKIP_REASONS,
 } from '../engine/session.js'
 import { groupByDay, monthDays } from '../engine/week.js'
 import { getExercise, exerciseName } from '../lib/exercises.js'
@@ -27,6 +30,7 @@ import {
 import { ACTIVITY_TYPES, activityName, intensityLabel, runTypeLabel, rideTypeLabel, matchFormatLabel } from '../lib/activities.js'
 import NavBar from '../components/NavBar.jsx'
 import { Group, Row, Section } from '../components/List.jsx'
+import BlockCountRow from '../components/BlockCountRow.jsx'
 import { Thumb, ActivityThumb } from '../components/ExerciseImage.jsx'
 import NumCell from '../components/NumCell.jsx'
 import Sheet, { ActionSheet } from '../components/Sheet.jsx'
@@ -149,8 +153,11 @@ function BackupBanner({ onExport, onDismiss }) {
 // down; the heading and dates stay, so a closed block still says what and when.
 function BlockMarker({ blockIndex, workouts, activityCount }) {
   const customEx = useStore((s) => s.customEx)
+  const plan = useStore((s) => s.plan)
+  const swaps = useStore((s) => s.swaps)
   const [open, setOpen] = useState(false)
-  const changes = blockWeightChanges(workouts)
+  const changes = blockWeightChanges(workouts, plan, swaps)
+  const extra = extraSessions(workouts, blockIndex)
   const first = workouts[0]
   const last = workouts[workouts.length - 1]
   const summary = (
@@ -158,7 +165,8 @@ function BlockMarker({ blockIndex, workouts, activityCount }) {
       <div className="block-marker-head">
         <span className="block-marker-title">Block {blockIndex + 1}</span>
         <span className="block-marker-count tnum">
-          {workouts.length} sessions
+          {sessionsDone(workouts, blockIndex)} sessions
+          {extra > 0 && ` · ${extra} extra`}
           {activityCount ? ` · ${activityCount}` : ''}
           {changes.length > 0 && (
             <span className={open ? 'filter-chevron open' : 'filter-chevron'}>
@@ -184,7 +192,7 @@ function BlockMarker({ blockIndex, workouts, activityCount }) {
         summary
       )}
       {changes.length > 0 && (
-        <div className="disclosure" data-open={open || undefined}>
+        <div className="disclosure" data-open={open || undefined} inert={!open}>
           <div className="disclosure-body">
             <div className="block-changes">
               <div className="caption">Working weight</div>
@@ -310,14 +318,18 @@ function WorkoutDetail({ workout, onClose, onDelete, onEditTimes, onOpenExercise
       <button type="button" className="ex-open" onClick={onEditTimes}>
         Edit date and time
       </button>
+      {workout.freeform && <BlockCountRow workout={workout} />}
       {workout.entries.map((entry, ei) => {
         const ex = getExercise(entry.exerciseId, customEx)
         const history = exerciseHistory(workouts, entry.exerciseId)
+        // Read-only here, and absent or an unknown id says nothing.
+        const skipped = entry.sets.some((st) => st.done) ? null : SKIP_REASONS.find((r) => r.id === entry.skipReason)
         return (
           <Group key={ei}>
             <Row
               thumb={ex && <Thumb exercise={ex} />}
               title={exerciseName(ex)}
+              subtitle={skipped && `Not done · ${skipped.label}`}
               value={changeFromPrevious(history, workout.finishedAt, heaviestDone(entry.sets))}
               chevron={Boolean(ex)}
               onClick={ex ? () => onOpenExercise(ex) : undefined}
@@ -548,6 +560,8 @@ export default function History() {
   })
   const byBlock = useMemo(() => blockWorkouts(workouts), [workouts])
   const blockDone = sessionsDone(workouts, progress.blockIndex)
+  const blockCustom = customSessions(workouts, progress.blockIndex)
+  const blockExtra = extraSessions(workouts, progress.blockIndex)
   const activityCounts = useMemo(() => {
     const map = new Map()
     for (const a of activities) map.set(a.blockIndex, (map.get(a.blockIndex) || 0) + 1)
@@ -592,6 +606,7 @@ export default function History() {
                   type="button"
                   className="chip"
                   data-active={filter === f.id}
+                  aria-pressed={filter === f.id}
                   onClick={() => setFilter(filter === f.id ? null : f.id)}
                 >
                   {f.icon && <Icon name={f.icon} size={16} />}
@@ -627,7 +642,10 @@ export default function History() {
                 {blockDone}
                 <span className="block-lead-of"> / {sessionCount}</span>
               </span>
-              <span className="block-lead-caption">sessions done</span>
+              <span className="block-lead-caption">
+                sessions done{blockCustom > 0 && ` · ${blockCustom} custom`}
+                {blockExtra > 0 && ` · ${blockExtra} extra`}
+              </span>
             </div>
             {/* A session forgotten in the gym counts toward the block like any other, so
                 there is nowhere to put one once the block is full. */}

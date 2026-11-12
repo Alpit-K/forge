@@ -1,26 +1,116 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { useStore } from '../store.js'
 import BODY from '../data/body.json'
 import { PARTS } from '../lib/body.js'
-import { MUSCLE_GROUPS, coverageDone, coveragePlanned, coverageRates, coverageLevels } from '../engine/muscles.js'
-import { sessionsDone } from '../engine/session.js'
+import { MUSCLE_GROUPS, INDIRECT_CREDIT, coverageDone, coveragePlanned, coverageRates, coverageLevels } from '../engine/muscles.js'
+import { sessionsDone, customSessions, extraSessions } from '../engine/session.js'
 import { getExercise, exerciseName } from '../lib/exercises.js'
 import Icon from './Icon.jsx'
 import { Row } from './List.jsx'
+import OwedList from './OwedList.jsx'
 
 const GROUP_OF_PART = Object.fromEntries(Object.entries(PARTS).flatMap(([g, parts]) => parts.map((p) => [p, g])))
 
 const plural = (n, word) => `${n} ${n === 1 ? word : `${word}s`}`
 
-function Figure({ view, levels }) {
+// A step's token, drawn the other way up: the least-trained step takes the lightest shade and
+// a plan met the darkest (owner's decision, 2026-11-11). Step 0 is untrained either way.
+const shade = (step) => `var(--cov-${step ? 5 - step : 0})`
+
+// The figure is drawn in three passes so a muscle can carry an inner outline: fills first,
+// then the outlined parts' strokes clipped to their own shape, then the sheet-coloured
+// separator over every edge, which trims the outline's outer half away and leaves it inside
+// the muscle. A muscle the plan asks for and nothing has trained yet is OUTLINED rather than
+// shaded — it differs from a muscle the plan does not hold by shape, not by colour — and the
+// group whose row is open is outlined in the label colour.
+//
+// The viewBox is cropped to the drawn parts on mount: MuscleMap's canvas carries a margin
+// either side of the arms, and the crop is what lets the pair fill the sheet.
+function Figure({ view, levels, outlined, open, onPick }) {
+  const ref = useRef(null)
+  const id = useId()
+  // Written to the element rather than through state: it is a measurement of what was just
+  // drawn, and React never rewrites the attribute because the prop below never changes.
+  useLayoutEffect(() => {
+    const b = ref.current.getBBox()
+    ref.current.setAttribute('viewBox', `${b.x - 4} ${b.y - 4} ${b.width + 8} ${b.height + 8}`)
+  }, [])
+  const parts = Object.entries(view.parts).flatMap(([slug, paths]) =>
+    paths.map((d, i) => ({ key: `${slug}-${i}`, d, group: GROUP_OF_PART[slug] })),
+  )
+  const ringed = parts.filter((p) => p.group && (p.group === open || outlined.has(p.group)))
   return (
-    <svg className="cov-figure" viewBox={view.viewBox} aria-hidden="true">
-      {Object.entries(view.parts).map(([slug, paths]) => {
-        const group = GROUP_OF_PART[slug]
-        const fill = group ? `var(--cov-${levels[group]})` : 'var(--cov-inert)'
-        return paths.map((d, i) => <path key={`${slug}-${i}`} d={d} fill={fill} />)
-      })}
+    <svg
+      ref={ref}
+      className="cov-figure"
+      viewBox={view.viewBox}
+      aria-hidden="true"
+      onClick={(e) => {
+        const g = e.target.getAttribute('data-group')
+        if (g) onPick(g)
+      }}
+    >
+      <defs>
+        {ringed.map((p) => (
+          <clipPath key={p.key} id={`${id}${p.key}`}>
+            <path d={p.d} />
+          </clipPath>
+        ))}
+      </defs>
+      {parts.map((p) => (
+        <path
+          key={p.key}
+          d={p.d}
+          data-group={p.group}
+          fill={p.group ? shade(outlined.has(p.group) ? 0 : levels[p.group]) : 'var(--cov-inert)'}
+        />
+      ))}
+      {ringed.map((p) => (
+        <path
+          key={p.key}
+          d={p.d}
+          className="cov-ring"
+          data-open={p.group === open || undefined}
+          clipPath={`url(#${id}${p.key})`}
+          vectorEffect="non-scaling-stroke"
+        />
+      ))}
+      {parts.map((p) => (
+        <path key={p.key} d={p.d} className="cov-edge" vectorEffect="non-scaling-stroke" />
+      ))}
     </svg>
+  )
+}
+
+// What the figure's steps mean, in words. The current block's steps are coverageLevel's own
+// thresholds — under 50%, 50–74%, 75–99%, met — so the key cannot drift from the
+// drawing. Where there is no plan to measure against, the steps are only relative.
+function Legend({ planned, none }) {
+  const steps = planned
+    ? [
+        ['not planned', 0],
+        ['none yet', 'ring'],
+        ['under 50%', 1],
+        ['50–74%', 2],
+        ['75–99%', 3],
+        ['plan met', 4],
+      ]
+    : [
+        [none, 0],
+        ['least', 1],
+        ['', 2],
+        ['', 3],
+        ['most', 4],
+      ]
+  return (
+    <div className="cov-legend" style={{ gridTemplateColumns: `repeat(${steps.length}, 1fr)` }} aria-hidden="true">
+      {steps.map(([word, step]) => (
+        <div className="cov-key" key={step}>
+          <span className="cov-swatch" data-ring={step === 'ring' || undefined} style={{ background: shade(step === 'ring' ? 0 : step) }} />
+          <span>{word}</span>
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -40,12 +130,24 @@ export default function MuscleCoverage({ onAdd }) {
   const [all, setAll] = useState(false)
   const [block, setBlock] = useState(current)
   const [open, setOpen] = useState(null)
+  // Set when the figure opens a row, so the row is brought into view; a tap on the list
+  // itself is already where the eye is.
+  const reveal = useRef(false)
+  const listRef = useRef(null)
+  useEffect(() => {
+    if (!reveal.current || !open) return
+    reveal.current = false
+    const row = [...listRef.current.querySelectorAll('button.row')].find((r) => r.querySelector('.title')?.textContent === open)
+    ;(row?.nextElementSibling?.classList.contains('cov-exercises') ? row.nextElementSibling : row)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [open])
 
   const inWindow = all ? workouts : workouts.filter((w) => w.blockIndex === block)
   const done = coverageDone(inWindow, customEx)
   const isCurrent = !all && block === current
   const planned = isCurrent ? coveragePlanned(plan, swaps, customEx) : null
   const sessions = sessionsDone(workouts, block)
+  const custom = customSessions(workouts, block)
+  const extra = extraSessions(workouts, block)
   const rates = planned ? null : coverageRates(done, inWindow)
   const firstBlock = Math.min(current, ...workouts.map((w) => w.blockIndex))
   const inWorkout = new Set(active ? active.exercises.map((e) => e.exerciseId) : [])
@@ -56,7 +158,8 @@ export default function MuscleCoverage({ onAdd }) {
   // figure shows the plan itself until a session lands, shaded relative to the busiest group
   // exactly as an earlier block's rates are. The list's numbers are unchanged (owner's
   // decision, 2026-10-29).
-  const showPlan = planned != null && sessions === 0
+  // Any log, extra included — an extra session's sets are coverage like any other's.
+  const showPlan = planned != null && inWindow.length === 0
   const levels = coverageLevels(
     showPlan
       ? { done, rates: Object.fromEntries(MUSCLE_GROUPS.map((g) => [g, planned[g].sets])) }
@@ -69,6 +172,13 @@ export default function MuscleCoverage({ onAdd }) {
     (a, b) => done[b].sets - done[a].sets || (planned ? planned[b].sets - planned[a].sets : 0),
   )
   const untrained = MUSCLE_GROUPS.filter((g) => done[g].sets === 0)
+  // Planned and untouched, once the block has begun: drawn as an outline, not a shade.
+  const outlined = new Set(planned && !showPlan ? MUSCLE_GROUPS.filter((g) => planned[g].sets > 0 && done[g].sets === 0) : [])
+  const pick = (g) => {
+    if (!rows.includes(g)) return
+    setOpen(open === g ? null : g)
+    reveal.current = true
+  }
 
   const value = (g) => {
     const d = done[g].sets
@@ -104,6 +214,8 @@ export default function MuscleCoverage({ onAdd }) {
             <div className="cov-period-title">Block {block + 1}</div>
             <div className="cov-period-sub tnum">
               {isCurrent ? `${sessions} of ${plan.sessionCount} sessions done` : plural(sessions, 'session')}
+              {custom > 0 && ` · ${custom} custom`}
+              {extra > 0 && ` · ${extra} extra`}
             </div>
           </div>
           <button type="button" className="btn" aria-label="Later block" disabled={block >= current} onClick={() => setBlock(block + 1)}>
@@ -114,18 +226,33 @@ export default function MuscleCoverage({ onAdd }) {
 
       {showPlan && <div className="caption cov-plan-label">What the plan asks for</div>}
       <div className="cov-figures">
-        <Figure view={BODY.front} levels={levels} />
-        <Figure view={BODY.back} levels={levels} />
+        <Figure view={BODY.front} levels={levels} outlined={outlined} open={open} onPick={pick} />
+        <Figure view={BODY.back} levels={levels} outlined={outlined} open={open} onPick={pick} />
       </div>
+      <Legend planned={planned != null && !showPlan} none={showPlan ? 'not planned' : 'not trained'} />
 
-      <div className="list">
+      <div className="list" ref={listRef}>
         {rows.map((g) => {
           // The plan's exercises first, then anything done that the plan does not hold.
           const exercises = new Map(planned ? planned[g].exercises : [])
           for (const [id, x] of done[g].exercises) if (!exercises.has(id)) exercises.set(id, x)
           return (
             <Fragment key={g}>
-              <Row title={g} value={value(g)} chevron open={open === g} onClick={() => setOpen(open === g ? null : g)}>
+              <Row
+                title={g}
+                // Sets that reached the group through another lift's secondaries, at half a
+                // set each. Secondary text only: the bar, the target and the shading stay
+                // direct. Where the figure is a weekly rate a set count would be a second unit.
+                subtitle={
+                  planned && done[g].indirect > 0 ? (
+                    <span className="tnum">+{done[g].indirect * INDIRECT_CREDIT} from other lifts</span>
+                  ) : null
+                }
+                value={value(g)}
+                chevron
+                open={open === g}
+                onClick={() => setOpen(open === g ? null : g)}
+              >
                 {planned && (
                   <div className="cov-bar">
                     <span style={{ width: `${fill(g) * 100}%` }} />
@@ -161,6 +288,8 @@ export default function MuscleCoverage({ onAdd }) {
           )
         })}
       </div>
+
+      {isCurrent && <OwedList onAdd={onAdd} />}
 
       {inWindow.length === 0 ? (
         <p className="cov-note">

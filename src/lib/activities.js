@@ -3,14 +3,27 @@
 //
 // `distance` marks the types where a distance means something. Tennis and `other` have no
 // distance field at all — a distance box on a tennis row is a box you leave blank forever.
+//
+// `cardio` marks the types that fill the week's cardio target (owner's decision,
+// 2026-11-10). A walk or an "other" is logged and shown like anything else, but it used to
+// satisfy "Cardio 2 of 2" and turn the coach card to rest.
 export const ACTIVITY_TYPES = [
-  { id: 'run', label: 'Run', plural: 'Runs', distance: true },
-  { id: 'tennis', label: 'Tennis', plural: 'Tennis', distance: false, format: true },
-  { id: 'cycle', label: 'Cycle', plural: 'Cycles', distance: true },
-  { id: 'swim', label: 'Swim', plural: 'Swims', distance: true },
+  { id: 'run', label: 'Run', plural: 'Runs', distance: true, cardio: true },
+  { id: 'tennis', label: 'Tennis', plural: 'Tennis', distance: false, format: true, cardio: true },
+  { id: 'cycle', label: 'Cycle', plural: 'Cycles', distance: true, cardio: true },
+  { id: 'swim', label: 'Swim', plural: 'Swims', distance: true, cardio: true },
   { id: 'walk', label: 'Walk', plural: 'Walks', distance: true },
   { id: 'other', label: 'Other', plural: 'Other', distance: false },
 ]
+
+// Whether an activity of this type fills the cardio target. The sport chosen in Settings
+// always does, whatever its type — it is what the coach asks for by name, so a session of
+// it that did not count would be asked for again the same day.
+export function countsAsCardio(typeId, sport = null) {
+  if (typeId === sport) return true
+  const type = ACTIVITY_TYPES.find((t) => t.id === typeId)
+  return Boolean(type && type.cardio)
+}
 
 // Intensity applies to EVERY type, distance only to some. A hard tennis evening is exactly
 // the session that should stop the coach suggesting a hard run the next day, so tennis has

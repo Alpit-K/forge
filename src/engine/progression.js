@@ -44,10 +44,14 @@ export function classifySession(entry, repsMin, repsMax, prescribed) {
   return statuses
 }
 
-// A session is "missed" when more than half its prescribed sets are misses.
+// A session is "missed" when more than half its prescribed sets are misses. A set
+// done lighter than the working weight is a miss here however many reps it got: classifySet
+// reads reps alone, so 50×12, 50×12, 60×5 used to count two hits and held at 60 for ever.
+// The weight is compared beside the rep check, the way earnsAdvance does it.
 export function isMissedSession(entry, repsMin, repsMax, prescribed) {
   const statuses = classifySession(entry, repsMin, repsMax, prescribed)
-  const misses = statuses.filter((s) => s === 'miss').length
+  const base = workingWeight(entry)
+  const misses = statuses.filter((s, i) => s === 'miss' || entry.sets[i].weightKg !== base).length
   return misses > prescribed / 2
 }
 
@@ -93,6 +97,19 @@ export function findSlotFor(plan, swaps, exerciseId) {
   return null
 }
 
+// Whether a log is evidence for an exercise's weight. An extra session — a custom workout on
+// top of the plan — is not, for a planned lift: a light bonus day at 40 kg handed a 60 kg
+// squat a target of 42.5. An exercise in no plan slot keeps every log, because extra
+// sessions may be all the history it has.
+export function isWeightEvidence(log, plan, swaps, exerciseId) {
+  return !log.extra || !findSlotFor(plan, swaps, exerciseId)
+}
+
+// The logs an exercise's target, stall note and block change are read from.
+export function weightLogs(workouts, plan, swaps, exerciseId) {
+  return workouts.filter((w) => isWeightEvidence(w, plan, swaps, exerciseId))
+}
+
 // Sessions that are evidence for this exercise, oldest first. An entry with nothing ticked
 // is dropped — the same rule and the same reason as exerciseHistory() in session.js. The
 // exercise was in the workout and never performed, which is a plan, not a performance:
@@ -126,16 +143,12 @@ function prescribedRepsOf(entry, prescribed) {
   })
 }
 
-// The advance rule — every set at the top of the range — loosened by a rep per set pooled
-// across the prescription. With three sets, set 3 lags set 1 by two or three reps through
-// fatigue, so under the strict rule 12-11-10 is a stall the scheme never escapes rather
-// than a training failure. Two guards:
-//
-//   - Each set is CLAMPED at repsMax before the sum, or one heroic 15 covers a collapsed
-//     6 and the back-off sets stop counting for anything.
-//   - A set below repsMin blocks it outright. repsMin and repsMax can be set equal in the
-//     Plan editor, and at 12–12 a pooled tolerance is cleared by 11-11-11 — every set a
-//     miss. The floor is the rule; the tolerance only ever bends the ceiling.
+// The advance rule — every set at the top of the range — loosened by one rep on each set:
+// every prescribed set within a rep of repsMax. It was a rep per set POOLED across the
+// prescription, which let one set fall two short — on a 4–6 window 6, 5, 4 advanced, and
+// on a 6–8 window so did 8, 8, 6.
+// A set below repsMin still blocks it outright: repsMin and repsMax can be set equal in the
+// Plan editor, and at 12–12 an 11 is a miss. The tolerance bends the ceiling, never the floor.
 //
 // Either way every prescribed set has to be at the working weight. classifySet reads reps
 // alone, so a lighter set at the top of the range would otherwise count as a top set at the
@@ -144,9 +157,8 @@ function earnsAdvance(entry, base, repsMin, repsMax, prescribed) {
   const statuses = classifySession(entry, repsMin, repsMax, prescribed)
   const allTop = statuses.length === prescribed && statuses.every((s) => s === 'top')
   const reps = prescribedRepsOf(entry, prescribed)
-  const clampedTotal = reps.reduce((sum, r) => sum + (r == null ? 0 : Math.min(r, repsMax)), 0)
   const withinOneRep =
-    clampedTotal >= prescribed * (repsMax - 1) && !statuses.some((s) => s === 'miss')
+    reps.every((r) => r != null && r >= repsMax - 1) && !statuses.some((s) => s === 'miss')
   const atBase = entry.sets.slice(0, prescribed).filter((s) => s && s.done && s.weightKg === base).length
   const repsEarned = allTop || withinOneRep
   return { statuses, allTop, withinOneRep, reps, atBase, repsEarned, earned: repsEarned && atBase === prescribed }
@@ -225,6 +237,14 @@ function userMovedWeights(history, exerciseId, rules) {
   return moved
 }
 
+// Where a "since then" reading of this exercise's history starts: the index, into its logged
+// sessions, of the latest one at a weight the user chose for themselves, or 0. It indexes
+// exerciseHistory() in session.js too — both drop the same untouched entries.
+export function ownWeightStart(exerciseId, rules, workouts = []) {
+  const history = relevantWorkouts(exerciseId, workouts)
+  return Math.max(0, userMovedWeights(history, exerciseId, rules).lastIndexOf(true))
+}
+
 // The progression decision against an explicit prescription, for the exercise actually
 // performed. nextTarget reads that prescription out of the plan; a mid-workout swap
 // carries the slot's own and has no template of its own to look up, so the history half
@@ -261,7 +281,7 @@ export function targetFor(exerciseId, rules, workouts = []) {
       // arithmetic instead: "you hit 3×12" is a lie about a session that did not.
       reason: allTop
         ? `Up ${increment} kg — you hit ${prescribed}×${repsMax} last time`
-        : `${reps.map((r) => (r == null ? '—' : r)).join(', ')} @ ${base} kg — within a rep of ${prescribed}×${repsMax} across the board. Add ${increment} kg.`,
+        : `${reps.map((r) => (r == null ? '—' : r)).join(', ')} @ ${base} kg — every set within a rep of ${repsMax}. Add ${increment} kg.`,
     }
   }
 
@@ -285,6 +305,12 @@ export function targetFor(exerciseId, rules, workouts = []) {
       : `Moved up to ${base} kg — build back to ${prescribed}×${repsMax}`
   } else if (moved > 0) reason = `Still at ${base} kg — you moved up last session`
   else if (moved < 0) reason = `Back at ${base} kg — build from here`
+  else if (outcome.advance.atBase < prescribed) {
+    // Lighter sets are not evidence about the working weight, so the reps listed are only
+    // the ones done at it — "you got 12, 12, 5" hid that two of those were 10 kg lighter.
+    const there = lastSets.slice(0, prescribed).filter((s) => s && s.done && s.weightKg === base)
+    reason = `${outcome.advance.atBase} of ${prescribed} sets at ${base} kg — ${there.map((s) => s.reps).join(', ')} reps there`
+  }
   // "reps" is spelled out: on a high-rep lift, "you got 25, 15, 10" reads as weights.
   else reason = `Holding — you got ${repsList ? `${repsList} reps` : 'fewer reps'} last session`
 
@@ -307,5 +333,5 @@ export function nextTarget(exerciseId, state, rotationIndex = null) {
     prescribed: template.sets,
     increment: incrementFor(template, ex),
   }
-  return targetFor(effectiveId, rules, workouts)
+  return targetFor(effectiveId, rules, weightLogs(workouts, plan, swaps, effectiveId))
 }

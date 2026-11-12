@@ -43,6 +43,7 @@ export function addDays(date, n) {
 }
 
 import { totalVolume } from './session.js'
+import { countsAsCardio } from '../lib/activities.js'
 
 // A WorkoutLog timestamps as `finishedAt`, an Activity as `at`. Not the same field, and
 // nothing else in the app needs both, so the asymmetry is absorbed here.
@@ -53,7 +54,12 @@ function inRange(iso, from, to) {
 
 // Inclusive of `from`, exclusive of `to`. One implementation, two windows — see the two
 // callers below, which deliberately disagree.
-export function summarise(workouts, activities, from, to) {
+//
+// `cardio` is everything logged in the window; `cardioCounted` is the part of it that fills
+// the weekly target — see countsAsCardio. Anything compared against shapeCounts reads the
+// second. `sport` is settings.cardioSport, which always counts. `lifts` and `liftsCounted`
+// split the same way: an extra session happened, and was not one the week asked for.
+export function summarise(workouts, activities, from, to, sport = null) {
   const lifts = workouts.filter((w) => w.finishedAt && inRange(w.finishedAt, from, to))
   const cardio = activities.filter((a) => a.at && inRange(a.at, from, to))
 
@@ -66,7 +72,13 @@ export function summarise(workouts, activities, from, to) {
   let distanceKm = 0
   let easy = 0
   let hard = 0
+  let cardioCounted = 0
+  let cardioMinutes = 0
   for (const a of cardio) {
+    if (countsAsCardio(a.type, sport)) {
+      cardioCounted += 1
+      if (typeof a.minutes === 'number' && Number.isFinite(a.minutes)) cardioMinutes += a.minutes
+    }
     if (typeof a.distanceKm === 'number' && Number.isFinite(a.distanceKm)) distanceKm += a.distanceKm
     if (a.intensity === 'easy') easy += 1
     else if (a.intensity === 'hard') hard += 1
@@ -75,7 +87,10 @@ export function summarise(workouts, activities, from, to) {
   const tagged = easy + hard
   return {
     lifts: lifts.length,
+    liftsCounted: lifts.filter((w) => !w.extra).length,
     cardio: cardio.length,
+    cardioCounted,
+    cardioMinutes,
     volumeKg,
     distanceKm,
     easy,
@@ -91,16 +106,16 @@ export function summarise(workouts, activities, from, to) {
 
 // What the Today readout shows: Monday to the end of today. This is "this week" as a person
 // means it, and it is the window the counts are compared against the weekly targets.
-export function weekSummary(workouts, activities, now = new Date()) {
-  return summarise(workouts, activities, weekStart(now), addDays(startOfDay(now), 1))
+export function weekSummary(workouts, activities, now = new Date(), sport = null) {
+  return summarise(workouts, activities, weekStart(now), addDays(startOfDay(now), 1), sport)
 }
 
 // What the coach reasons over: a rolling window ending today. Week-to-date is useless as an
 // 80/20 input — one easy run on a Tuesday reads 100% easy and means nothing. The two windows
 // disagree by design, so any reason line built from this one must name its own window.
-export function rollingSummary(workouts, activities, now = new Date(), days = 7) {
+export function rollingSummary(workouts, activities, now = new Date(), days = 7, sport = null) {
   const end = addDays(startOfDay(now), 1)
-  return summarise(workouts, activities, addDays(startOfDay(now), -(days - 1)), end)
+  return summarise(workouts, activities, addDays(startOfDay(now), -(days - 1)), end, sport)
 }
 
 // Whole days between two instants, by local calendar day. Same-day is 0, yesterday is 1.
@@ -136,19 +151,20 @@ export function groupByDay(items) {
 // The seven-dot row. One entry per day of the current week, Monday first, each carrying what
 // the shape asked for and what actually happened. Derived entirely — a day with nothing in it
 // is simply empty, never "missed", because nothing was ever scheduled to be missed.
-export function weekDays(workouts, activities, weekShape, now = new Date()) {
+export function weekDays(workouts, activities, weekShape, now = new Date(), sport = null) {
   const start = weekStart(now)
   const todayIdx = dayIndex(now)
   return Array.from({ length: 7 }, (_, i) => {
     const from = addDays(start, i)
     const to = addDays(start, i + 1)
-    const day = summarise(workouts, activities, from, to)
+    const day = summarise(workouts, activities, from, to, sport)
     return {
       index: i,
       date: from,
       planned: weekShape[i] || 'rest',
       lifts: day.lifts,
       cardio: day.cardio,
+      cardioCounted: day.cardioCounted,
       // The records themselves, for the week detail — the strip only needs the counts, but
       // deriving the same seven buckets a second time to name what was in them would be two
       // implementations of one thing.

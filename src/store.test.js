@@ -148,6 +148,58 @@ describe('swapMidWorkout', () => {
     expect(ex.performed.map((s) => s.reps)).toEqual([10, 9, 9])
   })
 
+  // A hold prefills last session's reps set by set — but only from sets done at the working
+  // weight. A lighter set's reps are not reps at this weight: 25 at a ramp-up weight became a
+  // target of 25 at the working weight.
+  it('prefills reps on a hold only from sets done at the working weight', () => {
+    const useStore = storeWithActive({
+      exerciseId: '0043',
+      swappedFrom: null,
+      lastSets: [],
+      repsMin: 8,
+      repsMax: 12,
+      sets: 3,
+      restSec: 150,
+      increment: 2.5,
+      kind: 'hold',
+      reason: 'Holding',
+      performed: [
+        { reps: 8, weightKg: 80, done: false },
+        { reps: 8, weightKg: 80, done: false },
+        { reps: 8, weightKg: 80, done: false },
+      ],
+    })
+    useStore.setState({
+      workouts: [
+        {
+          id: 'w1',
+          at: '2026-08-26T06:00:00.000Z',
+          blockIndex: 0,
+          sessionIndex: 0,
+          rotationIndex: 0,
+          templateName: 'Squat-led',
+          entries: [
+            {
+              exerciseId: '0739',
+              sets: [
+                { reps: 20, weightKg: 30, done: true },
+                { reps: 14, weightKg: 35, done: true },
+                { reps: 9, weightKg: 40, done: true },
+              ],
+            },
+          ],
+        },
+      ],
+    })
+
+    useStore.getState().swapMidWorkout(0, '0739')
+    const ex = useStore.getState().active.exercises[0]
+
+    expect(ex.kind).toBe('hold')
+    expect(ex.performed.map((s) => s.weightKg)).toEqual([40, 40, 40])
+    expect(ex.performed.map((s) => s.reps)).toEqual([8, 8, 9])
+  })
+
   // The prescription is the slot's, but the step belongs to the exercise. A leg press slotted
   // on another day at 10 kg steps by 10 kg there; swapped in for the squat it stepped by the
   // equipment default 2.5, so the same machine moved at two rates depending on which day it
@@ -447,15 +499,15 @@ describe('addExerciseToActive', () => {
               sets: [
                 { reps: 15, weightKg: 15, done: true },
                 { reps: 12, weightKg: 15, done: true },
-                { reps: 10, weightKg: 15, done: true },
+                { reps: 11, weightKg: 15, done: true },
               ],
             },
           ],
         },
       ],
     })
-    // Cable pushdown is in no plan slot. Against the default 8–12 × 3, 12 + 12 + 10 clears
-    // the rep-a-set tolerance, and a cable on triceps steps 2.5.
+    // Cable pushdown is in no plan slot. Against the default 8–12 × 3, every set is within
+    // a rep of 12, and a cable on triceps steps 2.5.
     useStore.getState().addExerciseToActive('0200')
     const ex = useStore.getState().active.exercises.find((e) => e.exerciseId === '0200')
     expect(ex.kind).toBe('advance')
@@ -483,6 +535,32 @@ describe('custom workout', () => {
     expect(a.building).toBe(true)
   })
 
+  // A custom workout is extra by default — on top of the plan, not one of the block's
+  // sessions — and ticking it in is a flip on the stored log, which only a custom one has.
+  it('finishes as an extra session, and can be counted toward the block', () => {
+    const storage = { getItem: () => null, setItem: () => {}, removeItem: () => {} }
+    const useStore = createStore(storage)
+    useStore.getState().startFreeWorkout()
+    expect(useStore.getState().active.extra).toBe(true)
+    useStore.getState().addExerciseToActive('0043')
+    useStore.getState().beginFreeWorkout()
+    const { log } = useStore.getState().finishWorkout()
+    expect(useStore.getState().workouts[0].extra).toBe(true)
+
+    useStore.getState().setCountsTowardBlock(log.id, true)
+    expect('extra' in useStore.getState().workouts[0]).toBe(false)
+    useStore.getState().setCountsTowardBlock(log.id, false)
+    expect(useStore.getState().workouts[0].extra).toBe(true)
+  })
+
+  it('never marks a rotation session extra', () => {
+    const storage = { getItem: () => null, setItem: () => {}, removeItem: () => {} }
+    const useStore = createStore(storage)
+    useStore.setState({ workouts: [{ id: 'w1', blockIndex: 0, rotationIndex: 0, entries: [] }] })
+    useStore.getState().setCountsTowardBlock('w1', false)
+    expect('extra' in useStore.getState().workouts[0]).toBe(false)
+  })
+
   it('stays building through adds and removes, and starts only with an exercise', () => {
     const storage = { getItem: () => null, setItem: () => {}, removeItem: () => {} }
     const useStore = createStore(storage)
@@ -508,7 +586,7 @@ describe('custom workout', () => {
     expect(useStore.getState().active.exercises).toHaveLength(1)
   })
 
-  it('finishing writes a freeform log, advances sessionIndex, and feeds progression', () => {
+  it('finishing writes a freeform log, advances sessionIndex, and feeds progression once counted', () => {
     const storage = { getItem: () => null, setItem: () => {}, removeItem: () => {} }
     const useStore = createStore(storage)
     useStore.getState().startFreeWorkout()
@@ -524,8 +602,11 @@ describe('custom workout', () => {
     expect(log.templateName).toBe('Custom workout')
     expect(log.entries[0].exerciseId).toBe('0043')
 
-    // The set feeds the next target: one done set at 60 is not an advance, so it holds at
-    // 60 — but the weight now comes from history rather than from nothing.
+    // Extra by default, so a planned lift takes no weight from it.
+    expect(nextTarget('0043', useStore.getState(), 0).weightKg).toBe(null)
+    // Counted toward the block, the set feeds the next target: one done set at 60 is not an
+    // advance, so it holds at 60 — but the weight now comes from history rather than nothing.
+    useStore.getState().setCountsTowardBlock(log.id, true)
     expect(nextTarget('0043', useStore.getState(), 0).weightKg).toBe(60)
   })
 })
@@ -606,5 +687,139 @@ describe('updateWorkoutTimes', () => {
     expect(workouts.map((w) => w.id)).toEqual(['w2', 'w1'])
     expect(workouts[1].startedAt).toBe('2026-09-12T06:00:00.000Z')
     expect(workouts[1].finishedAt).toBe('2026-09-12T07:15:00.000Z')
+  })
+})
+
+// ---- the sweep of 2026-11-10 ----
+describe('in-session actions added by the sweep', () => {
+  const ex = (exerciseId, performed) => ({
+    exerciseId,
+    swappedFrom: null,
+    lastSets: [],
+    repsMin: 8,
+    repsMax: 12,
+    sets: performed.length,
+    restSec: 90,
+    increment: 2.5,
+    kind: 'hold',
+    reason: '',
+    performed,
+  })
+  const fresh = (n, reps = 8) => Array.from({ length: n }, () => ({ reps, weightKg: 60, done: false }))
+  const three = () => {
+    const useStore = storeWithActive(ex('0043', fresh(3)))
+    useStore.setState((s) => ({
+      active: { ...s.active, exercises: [...s.active.exercises, ex('0739', fresh(3)), ex('0032', fresh(2))] },
+    }))
+    return useStore
+  }
+
+  it('carries the reps just logged to the sets not yet ticked, and stamps the time', () => {
+    const useStore = three()
+    useStore.getState().adjustSet(0, 0, { reps: 11 })
+    useStore.getState().tickSet(0, 0)
+    const p = useStore.getState().active.exercises[0].performed
+    expect(p.map((s) => s.reps)).toEqual([11, 11, 11])
+    expect(typeof p[0].at).toBe('string')
+    expect('at' in p[1]).toBe(false)
+  })
+
+  it('never rewrites a set already ticked when an earlier one is logged again', () => {
+    const useStore = three()
+    useStore.getState().tickSet(0, 0)
+    useStore.getState().adjustSet(0, 1, { reps: 6 })
+    useStore.getState().tickSet(0, 1)
+    useStore.getState().untickSet(0, 0)
+    useStore.getState().adjustSet(0, 0, { reps: 12 })
+    useStore.getState().tickSet(0, 0)
+    const p = useStore.getState().active.exercises[0].performed
+    expect(p.map((s) => s.reps)).toEqual([12, 6, 12])
+  })
+
+  it('drops the stamp when a set is unticked', () => {
+    const useStore = three()
+    useStore.getState().tickSet(0, 0)
+    useStore.getState().untickSet(0, 0)
+    expect('at' in useStore.getState().active.exercises[0].performed[0]).toBe(false)
+  })
+
+  it('trims only exercises not yet started, down to two sets, and puts them back exactly', () => {
+    const useStore = three()
+    useStore.getState().tickSet(0, 0)
+    useStore.getState().trimUntouched()
+    let exs = useStore.getState().active.exercises
+    expect(exs.map((e) => e.performed.length)).toEqual([3, 2, 2])
+    expect(exs[2].cut).toBeUndefined()
+    // A second press cuts nothing further.
+    useStore.getState().trimUntouched()
+    expect(useStore.getState().active.exercises[1].cut).toHaveLength(1)
+    useStore.getState().tickSet(1, 0)
+    useStore.getState().undoTrim()
+    exs = useStore.getState().active.exercises
+    expect(exs.map((e) => e.performed.length)).toEqual([3, 3, 2])
+    expect(exs[1].performed[0].done).toBe(true)
+    expect(exs.some((e) => 'cut' in e)).toBe(false)
+  })
+
+  it('leaves the plan alone when it trims', () => {
+    const useStore = three()
+    const before = JSON.stringify(useStore.getState().plan)
+    useStore.getState().trimUntouched()
+    expect(JSON.stringify(useStore.getState().plan)).toBe(before)
+  })
+
+  it('moves to the next exercise with a set left and clears rest, keeping this one', () => {
+    const useStore = three()
+    useStore.getState().tickSet(0, 0)
+    expect(useStore.getState().active.restStartedAt).not.toBeNull()
+    useStore.getState().doLater()
+    const a = useStore.getState().active
+    expect(a.currentIndex).toBe(1)
+    expect(a.restStartedAt).toBeNull()
+    expect(a.exercises).toHaveLength(3)
+  })
+
+  it('does nothing later-wise on the only exercise left', () => {
+    const useStore = storeWithActive(ex('0043', fresh(3)))
+    useStore.getState().doLater()
+    expect(useStore.getState().active.currentIndex).toBe(0)
+  })
+})
+
+describe('setSkipReason', () => {
+  const stored = () => {
+    const storage = { getItem: () => null, setItem: () => {}, removeItem: () => {} }
+    const useStore = createStore(storage)
+    useStore.setState({
+      workouts: [
+        {
+          id: 'w1',
+          startedAt: '2026-09-02T06:00:00.000Z',
+          finishedAt: '2026-09-02T06:40:00.000Z',
+          blockIndex: 0,
+          sessionIndex: 0,
+          rotationIndex: 0,
+          entries: [
+            { exerciseId: '0043', swappedFrom: null, sets: [{ reps: 8, weightKg: 60, done: true }] },
+            { exerciseId: '0739', swappedFrom: null, sets: [{ reps: 8, weightKg: 60, done: false }] },
+          ],
+        },
+      ],
+    })
+    return useStore
+  }
+
+  it('records a reason on an untouched entry and clears it again', () => {
+    const useStore = stored()
+    useStore.getState().setSkipReason('w1', '0739', 'rack')
+    expect(useStore.getState().workouts[0].entries[1].skipReason).toBe('rack')
+    useStore.getState().setSkipReason('w1', '0739', null)
+    expect('skipReason' in useStore.getState().workouts[0].entries[1]).toBe(false)
+  })
+
+  it('refuses an entry that was performed', () => {
+    const useStore = stored()
+    useStore.getState().setSkipReason('w1', '0043', 'time')
+    expect('skipReason' in useStore.getState().workouts[0].entries[0]).toBe(false)
   })
 })

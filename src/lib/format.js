@@ -1,7 +1,9 @@
-export function fmtDuration(sec) {
-  const m = Math.floor(sec / 60)
-  const s = sec % 60
-  return s === 0 ? `${m}m` : `${m}m ${s}s`
+// A span of training too long to read in minutes — a block's total. Whole minutes, and the
+// hours split out only once there is one.
+export function fmtHoursMinutes(sec) {
+  const total = Math.round(sec / 60)
+  const h = Math.floor(total / 60)
+  return h > 0 ? `${h} h ${total % 60} min` : `${total} min`
 }
 
 // Rest, as a clock rather than a count of seconds. `rest 150s` is arithmetic the reader has

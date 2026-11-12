@@ -143,6 +143,7 @@ export default function ActivitySheet({ activity, preset, onSave, onDelete, onOp
             type="button"
             className="chip"
             data-active={type === t.id}
+            aria-pressed={type === t.id}
             onClick={() => {
               if (t.id === type) return
               setType(t.id)
@@ -176,6 +177,7 @@ export default function ActivitySheet({ activity, preset, onSave, onDelete, onOp
                 type="button"
                 className="chip"
                 data-active={kindRow.value === t.id}
+                aria-pressed={kindRow.value === t.id}
                 onClick={() => kindRow.set(kindRow.value === t.id ? null : t.id)}
               >
                 {t.label}
@@ -268,6 +270,7 @@ export default function ActivitySheet({ activity, preset, onSave, onDelete, onOp
             type="button"
             className="chip"
             data-active={intensity === o.id}
+            aria-pressed={intensity === o.id}
             onClick={() => setIntensity(intensity === o.id ? null : o.id)}
           >
             {o.label}

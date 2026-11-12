@@ -1,6 +1,8 @@
 // Pure session mechanics: building a WorkoutLog, finishing, block completion, and the
 // summary numbers. No stored state, no counters.
 
+import { isWeightEvidence } from './progression.js'
+
 export function buildWorkoutLog(active, finishedAt) {
   return {
     id: active.id,
@@ -10,11 +12,19 @@ export function buildWorkoutLog(active, finishedAt) {
     sessionIndex: active.sessionIndex,
     rotationIndex: active.rotationIndex,
     freeform: active.freeform,
+    extra: active.extra,
     templateName: active.templateName,
     entries: active.exercises.map((ex) => ({
       exerciseId: ex.exerciseId,
       swappedFrom: ex.swappedFrom || null,
-      sets: ex.performed.map((s) => ({ reps: s.reps, weightKg: s.weightKg, done: s.done })),
+      // `at` is when the set was ticked — absent on a set never ticked, and on every set
+      // logged before it was recorded. Nothing reads it yet; it cannot be recovered later.
+      sets: ex.performed.map((s) => ({
+        reps: s.reps,
+        weightKg: s.weightKg,
+        done: s.done,
+        ...(s.done && s.at ? { at: s.at } : {}),
+      })),
     })),
   }
 }
@@ -55,9 +65,22 @@ export function continueBlock(progress) {
 // progress.sessionIndex — deleting a session in History removes the log and leaves the
 // counter alone, so the stored number runs ahead of what happened and never comes back.
 // Counting is the same rule as progression's: history is the only thing that knows.
-// A freeform workout is a full member of the block and counts here like any other.
+// A freeform workout counts here like any other unless it is `extra` — a custom workout
+// done on top of the plan, which otherwise used up one of the block's sessions and cost a
+// rotation day its turn. An extra session still feeds progression and coverage: it happened.
 export function sessionsDone(workouts, blockIndex) {
-  return workouts.filter((w) => w.blockIndex === blockIndex).length
+  return workouts.filter((w) => w.blockIndex === blockIndex && !w.extra).length
+}
+
+// How many of the block's counted sessions were custom ones, so a block can end before each
+// rotation day has had its turns — this is the number that says why.
+export function customSessions(workouts, blockIndex) {
+  return workouts.filter((w) => w.blockIndex === blockIndex && w.freeform && !w.extra).length
+}
+
+// The block's extra sessions — logged in it, counted by none of its session figures.
+export function extraSessions(workouts, blockIndex) {
+  return workouts.filter((w) => w.blockIndex === blockIndex && w.extra).length
 }
 
 // The workouts list is kept in finish order, and that is load-bearing: progression and
@@ -127,6 +150,69 @@ export function typicalMinutes(workouts, rotationIndex, rotationCount) {
   return Math.round(mins.length % 2 ? mins[mid] : (mins[mid - 1] + mins[mid]) / 2)
 }
 
+// Minutes the sets still to do are likely to take: the median minutes-per-completed-set of
+// the last five sessions, times the sets left. A whole-session rate on purpose — it carries
+// the walking between machines as well as the rest. Null with no usable history.
+export const PACE_SESSIONS = 5
+
+export function minutesLeft(active, workouts) {
+  const rates = workouts
+    .slice(-PACE_SESSIONS)
+    .map((w) => {
+      const sets = setsCompleted(w.entries)
+      return sets > 0 ? durationSeconds(w.startedAt, w.finishedAt) / 60 / sets : 0
+    })
+    .filter((r) => r > 0)
+    .sort((a, b) => a - b)
+  if (rates.length === 0) return null
+  const mid = Math.floor(rates.length / 2)
+  const rate = rates.length % 2 ? rates[mid] : (rates[mid - 1] + rates[mid]) / 2
+  const left = active.exercises.reduce((n, e) => n + e.performed.filter((s) => !s.done).length, 0)
+  return Math.round(left * rate)
+}
+
+// Why an exercise in a finished session was left untouched. A fixed list, never free text —
+// the point is to be able to count them. Stored as `skipReason` on the log's entry.
+export const SKIP_REASONS = [
+  { id: 'rack', label: 'Rack busy' },
+  { id: 'time', label: 'Time' },
+  { id: 'pain', label: 'Pain' },
+  { id: 'tired', label: 'Tired' },
+]
+
+// What the block is owed: for the rotation days actually trained in it, the sets the plan
+// gave each exercise against the sets done, listed where some are still outstanding. It
+// counts by day trained and never by session number, so a day that did not happen leaves no
+// trace here either — this is exercises skipped inside sessions that did happen. Sets done
+// in a custom session count toward it, and so does a mid-session swap, filed under the slot
+// it stood in for. The plan is the current one, as everywhere a block is measured.
+export function blockOwed(plan, swaps, workouts, blockIndex) {
+  const count = plan.rotation.length
+  const rows = new Map()
+  const slotOfId = new Map()
+  plan.rotation.forEach((day, rotationIndex) =>
+    day.exercises.forEach((t) => {
+      const exerciseId = swaps[t.exerciseId] || t.exerciseId
+      slotOfId.set(t.exerciseId, exerciseId)
+      if (!rows.has(exerciseId)) rows.set(exerciseId, { exerciseId, rotationIndex, planned: 0, done: 0 })
+    }),
+  )
+  for (const w of workouts) {
+    if (w.blockIndex !== blockIndex) continue
+    const slot = slotOf(w, count)
+    if (slot != null) {
+      for (const t of plan.rotation[slot].exercises) rows.get(slotOfId.get(t.exerciseId)).planned += t.sets
+    }
+    for (const e of w.entries) {
+      const row = rows.get(e.swappedFrom ? slotOfId.get(e.swappedFrom) : e.exerciseId)
+      if (row) row.done += e.sets.filter((s) => s && s.done).length
+    }
+  }
+  return [...rows.values()]
+    .filter((r) => r.done < r.planned)
+    .map((r) => ({ ...r, owed: r.planned - r.done }))
+}
+
 // The heaviest completed set in a list. The session's working weight — see workingWeight()
 // in the progression engine, which this deliberately matches.
 export function heaviestDone(sets) {
@@ -160,7 +246,12 @@ export function nextUnfinished(exercises, from) {
 export function slotResult(log, slotId, effectiveId) {
   const entry = log.entries.find((e) => e.exerciseId === effectiveId || e.swappedFrom === slotId)
   if (!entry) return null
-  return { weightKg: heaviestDone(entry.sets), swapped: Boolean(entry.swappedFrom) }
+  return {
+    weightKg: heaviestDone(entry.sets),
+    swapped: Boolean(entry.swappedFrom),
+    exerciseId: entry.exerciseId,
+    sets: entry.sets,
+  }
 }
 
 // Every session that logged real work for one exercise, oldest first. Sessions where the
@@ -188,18 +279,32 @@ export function exerciseHistory(workouts, exerciseId) {
 }
 
 // strength-block-2's rule, made visible while the block runs rather than found in the export
-// after it: a lift no heavier than it was four sessions ago means the rep window or the step
+// after it: a lift that has gained nothing in four sessions means the rep window or the step
 // is wrong, not the effort. The engine cannot see this — an advance that deloads straight
 // back (100 → 110 → 100) is two correct decisions that add up to nothing. It is information
 // only: nothing reads it to change a target. Null when there is not four sessions of history
 // or a session in the window has no weight to compare.
+//
+// "Gained nothing" is three things at once, and each was a false flag on its own: the latest
+// weight is no heavier than four sessions ago, the latest session did not go up on the one
+// before it, and at an unchanged weight the reps there have not grown. The caller hands in
+// the history since the last weight the user chose (ownWeightStart in the progression
+// engine), so a deliberate step-down starts the count again.
 export const STALL_SESSIONS = 4
+
+const repsAt = (row, weightKg) =>
+  (row.sets || []).reduce((n, s) => n + (s.weightKg === weightKg ? s.reps || 0 : 0), 0)
 
 export function stalledAt(history) {
   if (history.length < STALL_SESSIONS) return null
-  const from = history[history.length - STALL_SESSIONS].topWeight
-  const to = history[history.length - 1].topWeight
+  const first = history[history.length - STALL_SESSIONS]
+  const prev = history[history.length - 2]
+  const last = history[history.length - 1]
+  const from = first.topWeight
+  const to = last.topWeight
   if (from == null || to == null || to > from) return null
+  if (prev.topWeight != null && to > prev.topWeight) return null
+  if (to === from && repsAt(last, to) > repsAt(first, to)) return null
   return to
 }
 
@@ -246,12 +351,14 @@ function repsAtWeight(sets, weightKg) {
 
 // First logged working weight -> last, per exercise, across a block's workouts (in order),
 // with the reps at each. A block where the weight held and the reps grew is progress, and
-// "60 → 60 kg" alone said nothing had happened.
-export function blockWeightChanges(workouts) {
+// "60 → 60 kg" alone said nothing had happened. A planned lift skips extra sessions, by the
+// same rule its next target does.
+export function blockWeightChanges(workouts, plan, swaps) {
   const first = new Map()
   const last = new Map()
   for (const w of workouts) {
     for (const e of w.entries) {
+      if (!isWeightEvidence(w, plan, swaps, e.exerciseId)) continue
       const top = heaviestDone(e.sets)
       if (top == null) continue
       const point = { weightKg: top, reps: repsAtWeight(e.sets, top) }

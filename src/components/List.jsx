@@ -27,7 +27,7 @@ const TITLE_TONE = { accent: { color: 'var(--accent)' }, danger: { color: 'var(-
 export function Row({ title, subtitle, value, metric = false, thumb, chevron = false, open, onClick, children, danger = false, accent = false, disabled = false }) {
   const Tag = onClick ? 'button' : 'div'
   return (
-    <Tag className="row" onClick={onClick} disabled={onClick && disabled ? true : undefined}>
+    <Tag className="row" onClick={onClick} disabled={onClick && disabled ? true : undefined} aria-expanded={onClick && open != null ? open : undefined}>
       {thumb}
       <div className="row-label">
         <div className="title" style={danger ? TITLE_TONE.danger : accent ? TITLE_TONE.accent : undefined}>{title}</div>

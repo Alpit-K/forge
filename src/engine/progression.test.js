@@ -9,6 +9,7 @@ import {
   isMissedSession,
   workingWeight,
   findSlotFor,
+  weightLogs,
 } from './progression.js'
 import { seedPlan } from '../lib/seed.js'
 
@@ -312,7 +313,7 @@ describe('a prescribed set below the working weight', () => {
   })
 
   it('blocks the tolerance advance too', () => {
-    const w = [workout('0043', [set(12, 60), set(11, 60), set(10, 55)])]
+    const w = [workout('0043', [set(12, 60), set(11, 60), set(11, 55)])]
     const t = nextTarget('0043', state({ workouts: w }))
     expect(t.kind).toBe('hold')
     expect(t.reason).toBe('2 of 3 sets at 60 kg — all 3 at 60 kg to move up')
@@ -523,24 +524,23 @@ describe('a self-chosen weight change', () => {
   })
 })
 
-// The strict rule needs every prescribed set at repsMax. With three sets, set 3 lags set 1
-// by two or three reps through fatigue, so 12-11-10 is a stall the scheme never escapes
-// rather than a training failure. The tolerance is a rep per set, pooled across the
-// prescription, and each set is clamped at repsMax before the sum.
+// The strict rule needs every prescribed set at repsMax. The tolerance is one rep on each
+// set: every prescribed set within a rep of the top. It was pooled across the prescription
+// once, which let a single set fall two short — 8, 8, 6 on a 6–8 window advanced.
 describe('the advance tolerance', () => {
   const at = (...reps) => reps.map((r) => set(r, 60))
 
-  it('advances a session within a rep per set of the prescription', () => {
-    const t = nextTarget('0043', state({ workouts: [workout('0043', at(12, 11, 10))] }))
+  it('advances a session with every set within a rep of the top', () => {
+    const t = nextTarget('0043', state({ workouts: [workout('0043', at(12, 11, 11))] }))
     expect(t.kind).toBe('advance')
     expect(t.weightKg).toBe(62.5)
     expect(t.reason).toBe(
-      '12, 11, 10 @ 60 kg — within a rep of 3×12 across the board. Add 2.5 kg.',
+      '12, 11, 11 @ 60 kg — every set within a rep of 12. Add 2.5 kg.',
     )
   })
 
-  it('holds one rep short of the tolerance', () => {
-    expect(nextTarget('0043', state({ workouts: [workout('0043', at(12, 11, 9))] })).kind).toBe('hold')
+  it('holds when one set is two reps short, whatever the others total', () => {
+    expect(nextTarget('0043', state({ workouts: [workout('0043', at(12, 12, 10))] })).kind).toBe('hold')
   })
 
   it('advances an even session that never touched the top of the range', () => {
@@ -553,8 +553,7 @@ describe('the advance tolerance', () => {
     expect(nextTarget('0043', state({ workouts: [workout('0043', at(10, 10, 10))] })).kind).toBe('hold')
   })
 
-  it('clamps each set at the top of the range, so one heroic set cannot cover a collapse', () => {
-    // 15 + 12 + 6 totals 33 raw, which would clear the tolerance. Clamped it is 30.
+  it('does not let one heroic set cover a collapse', () => {
     expect(nextTarget('0043', state({ workouts: [workout('0043', at(15, 12, 6))] })).kind).toBe('hold')
   })
 
@@ -566,20 +565,20 @@ describe('the advance tolerance', () => {
 
   it('scales the tolerance to the slot it was prescribed under', () => {
     const plan = { ...seedPlan, rotation: twoSlotRotation() }
-    // The 4×10–15 slot: 15 + 14 + 14 + 13 is 56, a rep per set short of 60.
+    // The 4×10–15 slot: all four sets have to be at 14 or 15.
     const workouts = [
-      { ...workout('0043', [set(15, 60), set(14, 60), set(14, 60), set(13, 60)]), rotationIndex: 1 },
+      { ...workout('0043', [set(15, 60), set(14, 60), set(14, 60), set(14, 60)]), rotationIndex: 1 },
     ]
     const t = nextTarget('0043', { plan, workouts, swaps: {}, customEx: [] }, 1)
     expect(t.kind).toBe('advance')
     expect(t.reason).toBe(
-      '15, 14, 14, 13 @ 60 kg — within a rep of 4×15 across the board. Add 2.5 kg.',
+      '15, 14, 14, 14 @ 60 kg — every set within a rep of 15. Add 2.5 kg.',
     )
   })
 
   it('never advances off a set below the floor, however the total lands', () => {
-    // repsMin and repsMax can be set equal in the Plan editor, and there 11-11-11 clears a
-    // pooled tolerance of one rep per set while every set is a miss.
+    // repsMin and repsMax can be set equal in the Plan editor, and there 11-11-11 is within
+    // a rep of the top on every set while every set is a miss.
     const plan = { ...seedPlan, rotation: [{ name: 's', exercises: [entry('0043', { repsMin: 12, repsMax: 12 })] }] }
     const workouts = [workout('0043', at(11, 11, 11))]
     const t = nextTarget('0043', { plan, workouts, swaps: {}, customEx: [] })
@@ -679,5 +678,41 @@ describe('whose move the weight was', () => {
     expect(nextTarget('0043', state({ workouts: w })).reason).toBe(
       'Moved up to 65 kg — build back to 3×12',
     )
+  })
+})
+
+// An extra session is a custom workout on top of the plan. A light one at 40 kg handed a 60 kg
+// squat a target of 42.5 — "Up 2.5 kg" while taking 17.5 off.
+describe('extra sessions and planned weights', () => {
+  const extra = (w) => ({ ...w, freeform: true, extra: true, rotationIndex: null })
+
+  it('ignores an extra session for a planned lift', () => {
+    const workouts = [
+      workout('0043', [set(8), set(8), set(8)], 0),
+      workout('0043', [set(8), set(8), set(8)], 1),
+      extra(workout('0043', [set(12, 40), set(12, 40), set(12, 40)], 2)),
+    ]
+    const t = nextTarget('0043', state({ workouts }))
+    expect(t.kind).toBe('hold')
+    expect(t.weightKg).toBe(60)
+  })
+
+  it('still reads a custom workout that counts toward the block', () => {
+    const counted = { ...workout('0043', [set(12, 40), set(12, 40), set(12, 40)], 1), freeform: true, rotationIndex: null }
+    const t = nextTarget('0043', state({ workouts: [workout('0043', [set(8), set(8), set(8)], 0), counted] }))
+    expect(t.weightKg).toBe(42.5)
+  })
+
+  // An exercise in no plan slot may have nothing but extra sessions behind it.
+  it('keeps extra sessions for an exercise outside the plan', () => {
+    const { plan } = state()
+    const logs = [extra(workout('0200', [set(12, 20)], 0)), extra(workout('0043', [set(12, 40)], 1))]
+    expect(weightLogs(logs, plan, {}, '0200')).toHaveLength(2)
+    expect(weightLogs(logs, plan, {}, '0043')).toHaveLength(0)
+  })
+
+  it('treats a permanently swapped-in exercise as planned', () => {
+    const { plan } = state()
+    expect(weightLogs([extra(workout('0739', [set(12, 40)], 0))], plan, { '0043': '0739' }, '0739')).toHaveLength(0)
   })
 })

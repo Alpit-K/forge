@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { useStore } from '../store.js'
-import { nextTarget, targetFor } from '../engine/progression.js'
+import { useStore, UNPLANNED } from '../store.js'
+import { nextTarget, targetFor, findSlotFor, weightLogs } from '../engine/progression.js'
 import {
   buildWorkoutLog,
   blockWeightChanges,
@@ -8,30 +8,37 @@ import {
   heaviestDone,
   slotResult,
   sessionsDone,
+  customSessions,
+  extraSessions,
   isBlockComplete,
   nextUnfinished,
   typicalMinutes,
   setsCompleted,
   totalVolume,
   durationSeconds,
+  blockOwed,
+  SKIP_REASONS,
 } from '../engine/session.js'
 import { recommend, nextSession, sportNoun, weekForecast } from '../engine/coach.js'
 import { weekDays, dayIndex, weekSummary, shapeCounts } from '../engine/week.js'
 import { getExercise, exerciseName, gifSrc, weightHint, platesOnly, perSide, warmupSteps } from '../lib/exercises.js'
-import { ACTIVITY_TYPES } from '../lib/activities.js'
+import { ACTIVITY_TYPES, intensityLabel } from '../lib/activities.js'
 import NavBar from '../components/NavBar.jsx'
 import { Group, Row, Section } from '../components/List.jsx'
 import { Thumb, ExerciseMedia } from '../components/ExerciseImage.jsx'
 import BigStepper from '../components/BigStepper.jsx'
 import RestTimer from '../components/RestTimer.jsx'
+import ProgressRing from '../components/ProgressRing.jsx'
 import Sheet, { ActionSheet } from '../components/Sheet.jsx'
 import ExerciseBrowser from '../components/ExerciseBrowser.jsx'
 import SessionOverview from '../components/SessionOverview.jsx'
 import ActivitySheet from '../components/ActivitySheet.jsx'
 import WeekSheet from '../components/WeekSheet.jsx'
+import BlockCountRow from '../components/BlockCountRow.jsx'
 import { requestReloadIfIdle } from '../lib/update.js'
+import { announce } from '../lib/announce.js'
 import Icon from '../components/Icon.jsx'
-import { fmtDuration, fmtDate, fmtGreeting, fmtAgo, fmtActivityCount, fmtDistance, fmtBlockChange, fmtHr } from '../lib/format.js'
+import { fmtDate, fmtGreeting, fmtAgo, fmtActivityCount, fmtCount, fmtDistance, fmtBlockChange, fmtHoursMinutes, fmtHr } from '../lib/format.js'
 
 export default function Today() {
   const active = useStore((s) => s.active)
@@ -64,8 +71,8 @@ const DAY_INITIALS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
 const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
 // The opening lift of a rotation slot, resolved through the same nextTarget() the session
-// itself will use, so a card can never disagree with the first screen of the workout. Both
-// the coach card and the next-session preview read it — one rule, two callers.
+// itself will use, so the next-session preview can never disagree with the first screen of
+// the workout.
 function leadTarget(state, rotationIndex) {
   const t = state.plan.rotation[rotationIndex]?.exercises[0]
   if (!t) return null
@@ -93,13 +100,15 @@ function shortTarget(target) {
   return 'Hold'
 }
 
-// The most recent easy session of the sport the card is suggesting, as the number to aim at
-// — the cardio card's equivalent of a lift's opening target. Nothing dated after now: a
-// session still to come has not happened (the same cutoff coach.js applies).
-function lastEasy(activities, sport, now) {
+// The most recent session of the sport the card is suggesting, whatever its tag, as the
+// reference number — the cardio card's equivalent of a lift's opening target. It was the
+// last EASY one, which went two weeks stale behind three rides tagged hard; the tag is
+// printed beside the figures instead. Nothing dated after now: a session still to come has
+// not happened (the same cutoff coach.js applies).
+function lastOfSport(activities, sport, now) {
   let best = null
   for (const a of activities) {
-    if (a.type !== sport || a.intensity !== 'easy') continue
+    if (a.type !== sport) continue
     const t = Date.parse(a.at)
     if (!Number.isFinite(t) || t > now.getTime()) continue
     if (!best || t > Date.parse(best.at)) best = a
@@ -116,8 +125,17 @@ function lastEasy(activities, sport, now) {
 // and today onwards is what the coach would say, so a rested lift reappears on the day it
 // will actually be offered. A day that did not happen is drawn as rest — never as missed.
 function WeekStrip({ days, forecast }) {
+  // The strip says everything by shape and colour, so it is one image with the seven days
+  // spelt out — the same two facts per day the dots carry.
+  const words = days
+    .map((d) => {
+      const kind = forecast[d.index] === 'rest' ? null : forecast[d.index]
+      const what = d.lifts + d.cardioCounted > 0 ? `${d.lifts > 0 ? 'lift' : 'cardio'} done` : kind ? `${kind} to come` : 'rest'
+      return `${DAY_NAMES[d.index]} ${what}`
+    })
+    .join(', ')
   return (
-    <div className="week-strip" aria-label="This week">
+    <div className="week-strip" role="img" aria-label={`This week: ${words}`}>
       {days.map((d) => {
         // Two independent facts, two independent attributes — they were one before, which is
         // why the dot could say "planned" or "lift" but never "a lift day, still to come".
@@ -125,7 +143,9 @@ function WeekStrip({ days, forecast }) {
         // A long run is the cardio kind here exactly as it is in the week planner: the shape
         // sets four kinds, the strip reports two.
         const kind = forecast[d.index] === 'rest' ? null : forecast[d.index]
-        const state = d.lifts + d.cardio > 0 ? 'done' : kind ? 'planned' : 'rest'
+        // Done is what filled a target, the same count the card beside it prints: a day with
+        // only a walk on it is not drawn as cardio done.
+        const state = d.lifts + d.cardioCounted > 0 ? 'done' : kind ? 'planned' : 'rest'
         return (
           <div key={d.index} className="week-day" data-today={d.isToday || undefined}>
             <span className="week-day-letter">{DAY_INITIALS[d.index]}</span>
@@ -150,7 +170,7 @@ function activityMix(cardioLogs) {
 // The one decision. Everything else on this screen is below it, and the reason sits BELOW
 // the action deliberately — the explanation is what makes the card trustworthy, not what
 // you came to the screen to read.
-function CoachCard({ rec, lead, meta, lastSession, ceiling, onStart, onLog }) {
+function CoachCard({ rec, meta, lastSession, ceiling, onStart, onLog }) {
   const kind = rec.kind === 'lift' ? 'Lift' : rec.kind === 'cardio' ? 'Cardio' : 'Rest'
   const noun = rec.kind === 'cardio' ? sportNoun(rec.sport) : null
   // The same four glyphs and the same two tints the week planner in Settings draws, so the
@@ -177,33 +197,25 @@ function CoachCard({ rec, lead, meta, lastSession, ceiling, onStart, onLog }) {
       <div className="coach-title">{rec.title}</div>
       <div className="coach-detail">{rec.detail}</div>
 
-      {/* The first exercise of the slot, resolved through the same nextTarget() the session
-          itself will use. It is the number that decides whether you are going. */}
-      {lead && (
-        <div className="coach-target">
-          <span className="coach-target-name">{lead.name}</span>
-          <span className="coach-target-value tnum">{lead.value}</span>
-        </div>
-      )}
-
       {rec.kind === 'lift' && (
         <button type="button" className="btn-primary" onClick={onStart}>
           Start workout
         </button>
       )}
-      {/* The last easy session of the sport, as the lift card shows a lift's opening target:
-          the number that tells you what "easy" meant last time. The ceiling is the user's
-          own limit, set in Settings — the app proposes no target of its own. */}
+      {/* The last session of the sport, as a reference number. The
+          ceiling is the user's own limit, set in Settings — the app proposes no target of
+          its own. */}
       {rec.kind === 'cardio' && (lastSession || ceiling) && (
         <div className="coach-ref">
           {lastSession && (
             <div className="coach-last">
-              <span className="coach-target-name">Last easy {noun || 'session'} · {fmtDate(lastSession.at)}</span>
+              <span className="coach-target-name">Last {noun || 'session'} · {fmtDate(lastSession.at)}</span>
               <span className="coach-last-value tnum">
                 {[
                   typeof lastSession.distanceKm === 'number' ? fmtDistance(lastSession.distanceKm) : null,
                   `${lastSession.minutes} min`,
                   fmtHr(lastSession.avgHr),
+                  intensityLabel(lastSession.intensity),
                 ]
                   .filter(Boolean)
                   .join(' · ')}
@@ -239,20 +251,13 @@ function IdleView() {
   const rec = useMemo(() => recommend(state), [state])
   const forecast = useMemo(() => weekForecast(state), [state])
   const days = useMemo(
-    () => weekDays(workouts, activities, settings.weekShape || [], new Date()),
-    [workouts, activities, settings.weekShape],
+    () => weekDays(workouts, activities, settings.weekShape || [], new Date(), settings.cardioSport),
+    [workouts, activities, settings.weekShape, settings.cardioSport],
   )
 
   const week = rec.week
   const suggestedIndex = rec.kind === 'lift' ? rec.rotationIndex : null
   const now = new Date()
-
-  // The lead exercise of the suggested slot — the movement the day is named after, and the
-  // number that actually decides whether you are going.
-  const lead = useMemo(
-    () => (suggestedIndex == null ? null : leadTarget(state, suggestedIndex)),
-    [state, suggestedIndex],
-  )
 
   // What is coming, once the card above has nothing to offer — you have trained today, or
   // it is a rest day the week is on track for. It is a forecast and never a fixture: a lift
@@ -274,7 +279,10 @@ function IdleView() {
   // the number that decides whether you start.
   const typical = suggestedIndex == null ? null : typicalMinutes(workouts, suggestedIndex, plan.rotation.length)
   const shown = typical == null ? rec : { ...rec, detail: `${rec.detail} · usually ${typical} min` }
-  const lastSession = rec.kind === 'cardio' ? lastEasy(activities, rec.sport, now) : null
+  const lastSession = rec.kind === 'cardio' ? lastOfSport(activities, rec.sport, now) : null
+  // Exercises skipped inside sessions that happened, offered on a lift day as a light day
+  // to build. Derived per render like everything else here.
+  const owed = rec.kind === 'lift' ? blockOwed(plan, swaps, workouts, progress.blockIndex) : []
   const mix = activityMix(week.cardioLogs)
   const targets = shapeCounts(settings.weekShape || [])
 
@@ -296,7 +304,6 @@ function IdleView() {
       <div className="screen-body">
         <CoachCard
           rec={shown}
-          lead={lead}
           meta={meta}
           lastSession={lastSession}
           ceiling={rec.kind === 'cardio' ? settings.hrCeiling : null}
@@ -340,6 +347,24 @@ function IdleView() {
           </Group>
         )}
 
+        {owed.length > 0 && (
+          <Group>
+            <Row
+              title="Build a light day"
+              subtitle={
+                <span className="tnum">
+                  Left over this block:{' '}
+                  {owed
+                    .map((r) => `${exerciseName(getExercise(r.exerciseId, customEx))} ${r.done} of ${r.planned}`)
+                    .join(' · ')}
+                </span>
+              }
+              chevron
+              onClick={() => useStore.getState().startFreeWorkout()}
+            />
+          </Group>
+        )}
+
         {/* The old picker, demoted rather than removed. It never scolds and it is one tap
             away — a card you cannot overrule is a card you stop trusting.
 
@@ -355,7 +380,7 @@ function IdleView() {
             open={expanded}
             onClick={() => setExpanded(!expanded)}
           />
-          <div className="disclosure" data-open={expanded || undefined}>
+          <div className="disclosure" data-open={expanded || undefined} inert={!expanded}>
             <div className="disclosure-body">
               {plan.rotation.map((template, ri) => (
                 <Fragment key={ri}>
@@ -399,7 +424,7 @@ function IdleView() {
         {/* The two controls the picker leads to cannot live in the card above — a filled
             button is not a row — so they take the same wrapper and open on the same
             transition. Left outside it they appeared instantly under a card still growing. */}
-        <div className="disclosure" data-open={expanded || undefined}>
+        <div className="disclosure" data-open={expanded || undefined} inert={!expanded}>
           <div className="disclosure-body">
             <button
               type="button"
@@ -435,10 +460,11 @@ function IdleView() {
           <WeekStrip days={days} forecast={forecast} />
           <div className="week-counts tnum">
             <span>
-              Lifts {week.lifts} of {targets.lift}
+              Lifts {week.liftsCounted} of {targets.lift}
             </span>
             <span>
-              Cardio {week.cardio} of {targets.cardio}
+              Cardio {week.cardioCounted} of {targets.cardio}
+              {week.cardioMinutes > 0 && ` · ${week.cardioMinutes} min`}
             </span>
           </div>
           {(mix.length > 0 || week.distanceKm > 0) && (
@@ -467,6 +493,57 @@ function IdleView() {
   )
 }
 
+// The anvil with the icon's sparks struck off it — the finish summary's mark. The sparks are
+// three of public/icon.svg's five, carried onto Icon's 24 grid by the same transform the
+// anvil glyph uses and trimmed to their outer four fifths so they clear the anvil's face. They
+// draw in once on mount, which is the direct result of tapping Finish; reduced motion drops
+// the animation and leaves them drawn.
+const SPARKS = [
+  'M16.86 3.99 Q17.59 -0.02 19.48 -2.76',
+  'M17.34 4.21 Q19.09 0.72 21.55 -1.26',
+  'M17.61 4.72 Q19.92 2.36 22.47 1.04',
+]
+
+function StruckAnvil() {
+  return (
+    <span className="struck-anvil" aria-hidden="true">
+      <Icon name="anvil" size={44} />
+      <svg className="struck-sparks" width="44" height="44" viewBox="0 0 24 24">
+        {SPARKS.map((d) => (
+          <path key={d} d={d} pathLength="1" />
+        ))}
+      </svg>
+    </span>
+  )
+}
+
+// The sets of one entry as a strip and a line: a bar per set, filled to reps ÷ repsMax for a
+// set you logged and left as an empty outline for one you did not — so a missed set reads in
+// greyscale as a hole, not as a lighter colour.
+function SetStrip({ sets, repsMax }) {
+  return (
+    <span className="set-strip" aria-hidden="true">
+      {sets.map((s, i) => (
+        <span key={i} className="set-bar" data-done={s.done || undefined}>
+          {s.done && <span style={{ height: `${Math.max(0.12, Math.min(1, (s.reps || 0) / repsMax)) * 100}%` }} />}
+        </span>
+      ))}
+    </span>
+  )
+}
+
+// "67.5 kg × 4, 4, 4", grouped where the weight changed: "60 kg × 12 · 70 kg × 10, 10".
+function setsLine(sets) {
+  const groups = []
+  for (const s of sets) {
+    if (!s.done) continue
+    const last = groups[groups.length - 1]
+    if (last && last.w === s.weightKg) last.reps.push(s.reps)
+    else groups.push({ w: s.weightKg, reps: [s.reps] })
+  }
+  return groups.map((g) => (g.w != null ? `${g.w} kg × ${g.reps.join(', ')}` : `${g.reps.join(', ')} reps`)).join(' · ')
+}
+
 // Post-workout. The progression list is computed from state AFTER the log is saved, so it
 // is the real next target for each slot — the same nextTarget() the next session will use,
 // not a copy of it. Reads the plan's rotation rather than the log's entries because "next
@@ -492,104 +569,171 @@ function SummaryView({ summary, onDone }) {
         .join(' · ')
     : null
   const week = weekSummary(workouts, activities)
+  // The reason is written to the stored log after the summary was taken, so it is read back
+  // from the store, never from `summary.log`.
+  const saved = workouts.find((w) => w.id === summary.log.id)
   const rotation = rotationIndex != null ? plan.rotation[rotationIndex] : null
 
-  const progression = (rotation ? rotation.exercises : []).map((t) => {
-    const target = nextTarget(t.exerciseId, state, rotationIndex)
-    const effectiveId = swaps[t.exerciseId] || t.exerciseId
-    const ex = getExercise(effectiveId, customEx)
-    const did = slotResult(summary.log, t.exerciseId, effectiveId)
-    // No change across a swap: the slot reverts next session, so the two weights belong to
-    // two different lifts. Nothing is shown rather than a number that reads as progress.
-    const change =
-      !did || did.swapped || did.weightKg == null || target.weightKg == null
-        ? null
-        : Math.round((target.weightKg - did.weightKg) * 100) / 100
-    return { id: t.exerciseId, name: exerciseName(ex), target, change }
-  })
+  const rows = rotation
+    ? rotation.exercises.map((t) => {
+        const target = nextTarget(t.exerciseId, state, rotationIndex)
+        const effectiveId = swaps[t.exerciseId] || t.exerciseId
+        const did = slotResult(summary.log, t.exerciseId, effectiveId)
+        // No change across a swap: the slot reverts next session, so the two weights belong
+        // to two different lifts. Nothing is shown rather than a number that reads as progress.
+        const change =
+          !did || did.swapped || did.weightKg == null || target.weightKg == null
+            ? null
+            : Math.round((target.weightKg - did.weightKg) * 100) / 100
+        const sets = did ? did.sets : []
+        return {
+          id: t.exerciseId,
+          entryId: did ? did.exerciseId : null,
+          name: exerciseName(getExercise(did ? did.exerciseId : effectiveId, customEx)),
+          inPlaceOf: did?.swapped ? exerciseName(getExercise(effectiveId, customEx)) : null,
+          // A prescribed set removed mid-session is still a set the plan asked for.
+          sets: [...sets, ...Array.from({ length: Math.max(0, t.sets - sets.length) }, () => ({ done: false }))],
+          repsMax: t.repsMax,
+          target,
+          change,
+        }
+      })
+    : summary.log.entries.map((e) => {
+        // A custom workout has no slot to read a rep window from; one in the plan takes its
+        // slot's, anything else the unplanned default of 8–12.
+        const home = findSlotFor(plan, swaps, e.exerciseId)
+        const slot = home && plan.rotation[home.rotationIndex].exercises.find((x) => x.exerciseId === home.slotId)
+        return {
+          id: e.exerciseId,
+          entryId: e.exerciseId,
+          name: exerciseName(getExercise(e.exerciseId, customEx)),
+          inPlaceOf: null,
+          sets: e.sets,
+          repsMax: slot ? slot.repsMax : UNPLANNED.repsMax,
+          target: null,
+          change: null,
+        }
+      })
 
   // Exercises you actually logged something on, not exercises the session contained — an
   // untouched one is in `entries` with every set unticked and is not a thing you did.
   const exercisesDone = summary.log.entries.filter((e) => e.sets.some((st) => st.done)).length
+  const total = summary.log.entries.length
+  const facts = [
+    exercisesDone === total ? fmtCount(total, 'exercise') : `${exercisesDone} of ${fmtCount(total, 'exercise')}`,
+    fmtCount(summary.sets, 'set'),
+    summary.volume > 0 ? `${summary.volume.toLocaleString('en-GB')} kg` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
 
   return (
     <>
       <NavBar title="Today" />
       <div className="screen-body">
-        <div className="workout-hero">
-          <h2 className="done-title">Session complete</h2>
-          <p className="hero-sub tnum">
-            {summary.log.templateName} · {fmtDuration(summary.durationSec)}
-          </p>
-        </div>
-
-        <div className="summary-stats">
-          <div className="summary-stat">
-            <div className="value tnum">
-              {exercisesDone}
-              {exercisesDone !== summary.log.entries.length && (
-                <span className="summary-of tnum"> / {summary.log.entries.length}</span>
-              )}
-            </div>
-            <div className="label">Exercises</div>
-          </div>
-          <div className="summary-stat">
-            <div className="value tnum">{summary.sets}</div>
-            <div className="label">Sets</div>
-          </div>
-          <div className="summary-stat">
-            <div className="value tnum">{summary.volume.toLocaleString('en-GB')}</div>
-            <div className="label">kg Volume</div>
+        <div className="finish-hero">
+          <StruckAnvil />
+          <div>
+            <h2 className="done-title">Session complete</h2>
+            <p className="hero-sub">{summary.log.templateName}</p>
           </div>
         </div>
 
+        {/* One figure, in whole minutes — the way History's row states it. */}
+        <p className="done-figure">
+          {Math.round(summary.durationSec / 60)}
+          <span className="done-figure-unit">min</span>
+        </p>
         <div className="summary-context tnum">
+          <p className="summary-facts">{facts}</p>
           {previousLine && <p>{previousLine}</p>}
           <p>
-            Lifts {week.lifts} of {shapeCounts(settings.weekShape || []).lift} this week
+            Lifts {week.liftsCounted} of {shapeCounts(settings.weekShape || []).lift} this week
           </p>
         </div>
 
-        {progression.length > 0 ? (
-          <>
-            <div className="caption">Next time</div>
-            <div className="list">
-              {progression.map((p) => (
-                <div className="prog-row" key={p.id}>
-                  <span className={`prog-mark ${p.target.kind}`}>
-                    <Icon
-                      name={
-                        p.target.kind === 'advance'
-                          ? 'arrow-up'
-                          : p.target.kind === 'deload'
-                            ? 'arrow-down'
-                            : 'minus'
-                      }
-                      size={16}
-                    />
-                  </span>
-                  <span className="prog-name">{p.name}</span>
-                  <span className="prog-target tnum">
-                    {p.target.weightKg != null ? `${p.target.weightKg} kg` : 'First time'}
-                    {/* The change, stated rather than celebrated. "Held" is a fact worth
-                        printing: it is what most sessions do and it is not a failure. */}
-                    {p.change != null && (
-                      <span className={`prog-change${p.change > 0 ? ' up' : p.change < 0 ? ' down' : ''}`}>
-                        {p.change === 0 ? 'Held' : `${p.change > 0 ? '+' : '−'}${Math.abs(p.change)} kg`}
-                      </span>
-                    )}
-                  </span>
+        <div className="section-header lifted-header">
+          <span>What you lifted</span>
+          {rotation && <span>Next time</span>}
+        </div>
+        <Group>
+          {rows.map((r) => {
+            const line = setsLine(r.sets)
+            // An exercise removed mid-session has no entry to hold a reason.
+            const untouched = r.entryId != null && !r.sets.some((s) => s.done)
+            const reason = untouched ? saved?.entries.find((e) => e.exerciseId === r.entryId)?.skipReason : null
+            return (
+              <Fragment key={r.id}>
+              <Row
+                title={r.name}
+                subtitle={r.inPlaceOf ? `In place of ${r.inPlaceOf}` : null}
+                value={
+                  r.target && (
+                    <span className="lifted-next">
+                      <span className="prog-target">{r.target.weightKg != null ? `${r.target.weightKg} kg` : 'First time'}</span>
+                      {/* The glyph sits with the change, not the weight: a minus beside
+                          "67.5 kg" read as a negative number. The change is stated rather
+                          than celebrated — "Held" is what most sessions do, not a failure. */}
+                      {r.target.kind !== 'first' && (
+                        <span className="lifted-next-change">
+                          <span className={`prog-mark ${r.target.kind}`}>
+                            <Icon
+                              name={r.target.kind === 'advance' ? 'arrow-up' : r.target.kind === 'deload' ? 'arrow-down' : 'minus'}
+                              size={14}
+                            />
+                          </span>
+                          {r.change != null && (
+                            <span className={`prog-change${r.change > 0 ? ' up' : r.change < 0 ? ' down' : ''}`}>
+                              {r.change === 0 ? 'Held' : `${r.change > 0 ? '+' : '−'}${Math.abs(r.change)} kg`}
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </span>
+                  )
+                }
+              >
+                <div className="lifted-sets">
+                  <SetStrip sets={r.sets} repsMax={r.repsMax} />
+                  <span className="lifted-reps">{line || 'Not done'}</span>
                 </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          // A custom workout has no rotation slot, so there is no "next time" to list — but
-          // say so, rather than let the empty section read as missing data.
-          summary.log.freeform && (
-            <p className="summary-note">Targets update next time these lifts appear in a scheduled session.</p>
-          )
+              </Row>
+              {/* Under the row at the card's full width, not inside its label: beside the value
+                  column the four chips wrapped unevenly and pushed Done off the screen. */}
+              {untouched && (
+                <div className="row skip-row">
+                  <div className="chip-row skip-why" role="group" aria-label={`Why ${r.name} was not done`}>
+                    {SKIP_REASONS.map((o) => (
+                      <button
+                        key={o.id}
+                        type="button"
+                        className="chip"
+                        data-active={reason === o.id}
+                        aria-pressed={reason === o.id}
+                        onClick={() =>
+                          useStore.getState().setSkipReason(summary.log.id, r.entryId, reason === o.id ? null : o.id)
+                        }
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              </Fragment>
+            )
+          })}
+        </Group>
+        {/* A custom workout has no rotation slot, so there is no "next time" to list — but
+            say so, rather than let the missing column read as missing data. */}
+        {summary.log.freeform && (
+          <p className="summary-note">
+            {saved?.extra
+              ? 'An extra session leaves the targets of your planned lifts where they were.'
+              : 'Targets update next time these lifts appear in a scheduled session.'}
+          </p>
         )}
+        {saved?.freeform && <BlockCountRow workout={saved} />}
 
         <button type="button" className="btn-primary" onClick={onDone}>
           Done
@@ -599,52 +743,120 @@ function SummaryView({ summary, onDone }) {
   )
 }
 
+// A block's lift, as a line from its first weight to its last, scaled within the glyph — so
+// it says which way, not how far. Flat when the weight held, whatever the reps did; the
+// colour beside it is the same `.delta` direction the words carry.
+function Slope({ first, last, direction }) {
+  const [y1, y2] = last > first ? [13, 3] : last < first ? [3, 13] : [8, 8]
+  return (
+    <svg className={`slope delta${direction ? ` ${direction}` : ''}`} width="28" height="16" viewBox="0 0 28 16" aria-hidden="true">
+      <path d={`M3 ${y1} L25 ${y2}`} />
+      <circle cx="3" cy={y1} r="2" />
+      <circle cx="25" cy={y2} r="2" />
+    </svg>
+  )
+}
+
+const DIRECTION_ORDER = { up: 0, held: 1, down: 2 }
+
 function BlockCompleteView() {
   const progress = useStore((s) => s.progress)
   const workouts = useStore((s) => s.workouts)
   const activities = useStore((s) => s.activities)
   const customEx = useStore((s) => s.customEx)
+  const plan = useStore((s) => s.plan)
+  const swaps = useStore((s) => s.swaps)
+  const sessionCount = plan.sessionCount
 
   const blockWorkouts = workouts.filter((w) => w.blockIndex === progress.blockIndex)
+  const done = sessionsDone(workouts, progress.blockIndex)
   const activityCount = fmtActivityCount(activities.filter((a) => a.blockIndex === progress.blockIndex).length)
-  const changes = blockWeightChanges(blockWorkouts)
   const first = blockWorkouts[0]
   const last = blockWorkouts[blockWorkouts.length - 1]
+  const custom = customSessions(workouts, progress.blockIndex)
+  const extra = extraSessions(workouts, progress.blockIndex)
+  const seconds = blockWorkouts.reduce((n, w) => n + durationSeconds(w.startedAt, w.finishedAt), 0)
+  const volume = blockWorkouts.reduce((n, w) => n + totalVolume(w.entries), 0)
+  const facts = [
+    fmtCount(done, 'session'),
+    custom > 0 ? `${custom} custom` : null,
+    extra > 0 ? `${extra} extra` : null,
+    fmtHoursMinutes(seconds),
+    volume > 0 ? `${(volume / 1000).toFixed(1)} t lifted` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
+  const changes = blockWeightChanges(blockWorkouts, plan, swaps)
+    .map((c) => ({ ...c, ...fmtBlockChange(c) }))
+    .sort((a, b) => DIRECTION_ORDER[a.direction || 'held'] - DIRECTION_ORDER[b.direction || 'held'])
+  const tally = { up: 0, held: 0, down: 0 }
+  for (const c of changes) tally[c.direction || 'held'] += 1
 
   return (
     <>
       <NavBar title="Today" />
       <div className="screen-body">
-        <div className="workout-hero">
-          <h2 className="done-title">Block complete</h2>
-          <p className="hero-sub">
-            {blockWorkouts.length} sessions completed
-            {activityCount ? ` · ${activityCount}` : ''}
-            {first && last ? ` · ${fmtDate(first.startedAt)} – ${fmtDate(last.finishedAt)}` : ''}
-          </p>
+        <div className="block-hero">
+          <ProgressRing fraction={done / sessionCount} size={120} stroke={8} heat>
+            <span className="block-ring-count tnum">
+              {done}
+              <span className="block-ring-of"> / {sessionCount}</span>
+            </span>
+          </ProgressRing>
+          <h2 className="done-title">Block {progress.blockIndex + 1} complete</h2>
+          {first && last && (
+            <p className="hero-sub tnum">
+              {fmtDate(first.startedAt)} – {fmtDate(last.finishedAt)}
+            </p>
+          )}
         </div>
-        {changes.length > 0 && (
-          <Group>
-            {changes.map((c) => {
-              const ex = getExercise(c.exerciseId, customEx)
-              const { text, direction } = fmtBlockChange(c)
+
+        {/* One bar per session in the order done, filled to the share of its listed sets that
+            were completed, in one column per session of the block — so the strip spans the
+            card whatever the block's length. A custom session is outlined rather than filled,
+            so it reads differently in greyscale as well as in the facts line. */}
+        <div className="block-strip">
+          <div className="block-strip-bars" style={{ '--n': Math.max(sessionCount, blockWorkouts.length) }} aria-hidden="true">
+            {blockWorkouts.map((w) => {
+              const listed = w.entries.reduce((n, e) => n + e.sets.length, 0)
+              const share = listed > 0 ? setsCompleted(w.entries) / listed : 0
               return (
+                <span
+                  key={w.id}
+                  className="block-strip-bar"
+                  data-custom={w.freeform || undefined}
+                  style={{ height: `${Math.max(0.06, share) * 100}%` }}
+                />
+              )
+            })}
+          </div>
+          <p className="block-strip-facts">
+            {custom > 0 && <span className="block-strip-key" aria-hidden="true" />}
+            {facts}
+          </p>
+          {activityCount && <p className="block-strip-facts">{activityCount}</p>}
+        </div>
+
+        {changes.length > 0 && (
+          <>
+            <div className="section-header tnum">
+              {tally.up} up · {tally.held} held · {tally.down} down
+            </div>
+            <Group>
+              {changes.map((c) => (
                 // The change sits under the name rather than beside it: "15 kg: 10s → 11s"
                 // beside "Cable Pushdown (with Rope Attachment)" squeezed the name to four
                 // lines. Under it, every row reads the same way whatever the name's length.
                 <Row
                   key={c.exerciseId}
-                  title={exerciseName(ex)}
-                  thumb={<Thumb exercise={ex} />}
-                  subtitle={
-                    <span className={`delta${direction ? ` ${direction}` : ''}`}>
-                      {text}
-                    </span>
-                  }
+                  title={exerciseName(getExercise(c.exerciseId, customEx))}
+                  subtitle={<span className={`delta${c.direction ? ` ${c.direction}` : ''}`}>{c.text}</span>}
+                  value={<Slope first={c.first} last={c.last} direction={c.direction} />}
                 />
-              )
-            })}
-          </Group>
+              ))}
+            </Group>
+          </>
         )}
         <button type="button" className="btn-primary" onClick={() => useStore.getState().continueBlock()}>
           Continue
@@ -768,6 +980,22 @@ function WorkoutFlow({ onFinish }) {
             selectLabel="Swap exercise"
             suggestFor={exDef}
             exclude={active.exercises.map((x) => x.exerciseId)}
+            // The rack is taken: here rather than on the logger, whose height is a measured
+            // budget. Offered only when another exercise still has a set to do.
+            lead={
+              nextIdx !== -1 && (
+                <Group>
+                  <Row
+                    title="Do this later"
+                    subtitle="Leave it in the session and move to the next exercise"
+                    onClick={() => {
+                      store().doLater()
+                      setSwapSheet(false)
+                    }}
+                  />
+                </Group>
+              )
+            }
             onSelect={(e) => {
               store().swapMidWorkout(exIdx, e.id)
               setSwapSheet(false)
@@ -834,7 +1062,10 @@ function WorkoutFlow({ onFinish }) {
             sound={state.settings.sound}
             onAdjust={(d) => store().adjustRest(d)}
             onSkip={() => store().skipRest()}
-            onComplete={() => store().skipRest()}
+            onComplete={() => {
+              store().skipRest()
+              announce(`Rest over. Set ${nextSetIdx + 1} of ${current.performed.length}`)
+            }}
           >
             <div className="rest-next">
               <div className="rest-next-set">
@@ -893,7 +1124,7 @@ function WorkoutFlow({ onFinish }) {
     const ahead = targetFor(
       current.exerciseId,
       { repsMin: current.repsMin, repsMax: current.repsMax, prescribed: current.sets, increment: current.increment },
-      [...state.workouts, buildWorkoutLog(active, new Date().toISOString())],
+      weightLogs([...state.workouts, buildWorkoutLog(active, new Date().toISOString())], state.plan, state.swaps, current.exerciseId),
     )
     return (
       <>
@@ -957,7 +1188,13 @@ function WorkoutFlow({ onFinish }) {
   // The heaviest completed set, matching workingWeight() in the engine — the same rule the
   // next target was derived from, so the two lines on screen cannot disagree.
   const lastWeight = heaviestDone(current.lastSets)
-  const lastReps = (current.lastSets || []).map((s) => (s && s.done ? s.reps : '—')).join(', ')
+  // One weight for every set reads "27.5 kg · 12, 12, 10". Mixed weights print each set's own,
+  // or the heaviest beside every rep count claims sets at 27.5 that were done lighter.
+  const lastDone = (current.lastSets || []).filter((s) => s && s.done)
+  const lastMixed = lastDone.some((s) => s.weightKg !== lastWeight)
+  const lastReps = (current.lastSets || [])
+    .map((s) => (!s || !s.done ? '—' : lastMixed ? `${s.weightKg ?? '–'} × ${s.reps}` : s.reps))
+    .join(lastMixed ? ' · ' : ', ')
   const plates = platesOnly(exDef)
   // A warm-up ramp only before the first set of the session's first lift, and only on a
   // barbell, where the per-side arithmetic is what you are doing at the rack anyway. Ticks
@@ -997,7 +1234,7 @@ function WorkoutFlow({ onFinish }) {
             exactly when you most want to see it and exactly when it used to be missing. */}
         {lastWeight != null && (
           <p className="logger-last tnum">
-            Last time {lastWeight} kg · {lastReps}
+            {lastMixed ? `Last time ${lastReps} kg` : `Last time ${lastWeight} kg · ${lastReps}`}
           </p>
         )}
         {/* The reason, frozen at startWorkout, so it cannot move while you lift. It was
@@ -1015,6 +1252,7 @@ function WorkoutFlow({ onFinish }) {
                 key={i}
                 className="chip warmup-step tnum"
                 data-active={warmedUp.includes(i)}
+                aria-pressed={warmedUp.includes(i)}
                 onClick={() => setWarmedUp(warmedUp.includes(i) ? warmedUp.filter((x) => x !== i) : [...warmedUp, i])}
               >
                 {w.sideKg == null ? 'Bar' : w.sideKg} × {w.reps}
@@ -1070,7 +1308,14 @@ function WorkoutFlow({ onFinish }) {
           />
         </div>
 
-        <button type="button" className="btn-primary" onClick={() => store().tickSet(exIdx, setIdx)}>
+        <button
+          type="button"
+          className="btn-primary"
+          onClick={() => {
+            store().tickSet(exIdx, setIdx)
+            announce(`Set ${setIdx + 1} logged, ${set.weightKg != null ? `${set.weightKg} kilos, ` : ''}${set.reps} reps`)
+          }}
+        >
           Complete set
         </button>
 

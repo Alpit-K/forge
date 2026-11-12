@@ -1,6 +1,8 @@
-// Progress as a ring — the rest timer's, and the block count on History. Driven by a fraction
-// the caller derives, never by a counter of its own: see RestTimer for why that matters there.
-export default function ProgressRing({ fraction, size = 232, stroke = 12, children }) {
+// Progress as a ring — the rest timer's, the block-complete hero, and the block count on
+// History. Driven by a fraction the caller derives, never by a counter of its own: see
+// RestTimer for why that matters there. `heat` paints it in --heat, which only the
+// block-complete hero does: a finished block is the one ring that is not a countdown.
+export default function ProgressRing({ fraction, size = 264, stroke = 14, heat = false, children }) {
   const clamped = Math.max(0, Math.min(1, fraction))
 
   // Drawn in CSS rather than SVG because the shading follows the arc: SVG has no gradient
@@ -10,7 +12,7 @@ export default function ProgressRing({ fraction, size = 232, stroke = 12, childr
   // however far it has drained. A conic edge is square, so each end carries a round cap.
   return (
     <div
-      className="ring"
+      className={heat ? 'ring ring-heat' : 'ring'}
       style={{ width: size, height: size, '--size': `${size}px`, '--stroke': `${stroke}px`, '--sweep': `${clamped * 360}deg` }}
     >
       <div className="ring-band ring-track" aria-hidden="true" />

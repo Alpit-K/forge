@@ -82,6 +82,13 @@ describe('summarise', () => {
     expect(s.distanceKm).toBeCloseTo(9.2)
   })
 
+  // An extra session happened, so it is a lift; it is not one the week's target asked for.
+  it('counts an extra session as a lift but not toward the target', () => {
+    const s = summarise([lift(iso(2026, 9, 1)), { ...lift(iso(2026, 9, 2)), freeform: true, extra: true }], [], from, to)
+    expect(s.lifts).toBe(2)
+    expect(s.liftsCounted).toBe(1)
+  })
+
   it('excludes anything outside the window', () => {
     const s = summarise([lift(iso(2026, 8, 30))], [act(iso(2026, 9, 7))], from, to)
     expect(s.lifts).toBe(0)
@@ -299,5 +306,30 @@ describe('monthDays', () => {
     expect(on(25).lifts).toBe(0)
     expect(on(26).cardio).toBe(2)
     expect(days.filter((d) => d.isToday).map((d) => d.date.getDate())).toEqual([29])
+  })
+})
+
+describe('what fills the cardio target', () => {
+  const from = local(2026, 8, 31, 0, 0)
+  const to = addDays(from, 7)
+  const day = (d) => iso(2026, 9, d)
+
+  it('counts a run, a ride, a swim and tennis, and not a walk or an other', () => {
+    const a = ['run', 'cycle', 'swim', 'tennis', 'walk', 'other'].map((type, i) => act(day(i + 1), { type }))
+    const s = summarise([], a, from, to)
+    expect(s.cardio).toBe(6)
+    expect(s.cardioCounted).toBe(4)
+    expect(s.cardioMinutes).toBe(120)
+  })
+
+  it('always counts the sport chosen in Settings', () => {
+    const s = summarise([], [act(day(1), { type: 'walk' })], from, to, 'walk')
+    expect(s.cardioCounted).toBe(1)
+  })
+
+  it('leaves an activity with no duration out of the minutes, not in as zero or NaN', () => {
+    const s = summarise([], [act(day(1), { minutes: undefined }), act(day(2))], from, to)
+    expect(s.cardioCounted).toBe(2)
+    expect(s.cardioMinutes).toBe(30)
   })
 })

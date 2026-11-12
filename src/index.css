@@ -92,18 +92,31 @@
 
   /* The coverage sheet's body figure. A muscle not trained is --bg-tertiary, the parts no
      group counts (head, hands, forearms, shins) sit a step darker so the trained regions
-     stand out, and the four shades are --accent at rising alpha over the sheet — written
-     out by hand like the -dim tints above: MOVE ONE AND MOVE ALL. Luminance only, no new
-     hue: the list beside the figure carries every number, so it still reads in greyscale.
-     The alphas are spaced, not picked: each step is 1.29–1.39:1 from the one below it on a
-     card, and the first is 1.29:1 off an untrained muscle — at 0.2 it measured 1.04:1 and
-     a lightly trained muscle looked untrained. The full step is --accent, 4.73:1. */
+     stand out. The four shades are OPAQUE steps of the accent's hue at equal OKLab lightness
+     intervals (L 0.44 / 0.55 / 0.66 / 0.78), the top one --accent-bright — luminance only,
+     no new hue, and the list beside the figure carries every number, so it still reads in
+     greyscale. Alphas of one violet were tried first and in practice read as one mid-violet:
+     29% and 50% of plan were indistinguishable. Measured on the sheet (--bg-elevated):
+     1.88 / 3.06 / 4.85 / 7.54:1; each step from the one below 1.35 (step 1 off --cov-0),
+     1.63, 1.59 and 1.55:1. A muscle planned and untouched is --cov-0 with an inner outline
+     in --cov-2, 2.20:1 off its own fill — shape, not hue. MOVE ONE AND RECOMPUTE ALL. */
   --cov-inert: #2c2b36;
   --cov-0: var(--bg-tertiary);
-  --cov-1: rgba(139, 124, 245, 0.38);
-  --cov-2: rgba(139, 124, 245, 0.58);
-  --cov-3: rgba(139, 124, 245, 0.78);
-  --cov-4: var(--accent);
+  --cov-1: #5038ac;
+  --cov-2: #6e5bd1;
+  --cov-3: #8d7ef8;
+  --cov-4: var(--accent-bright);
+
+  /* Heat — the icon's spark orange, let into the UI in exactly three places: the finish
+     summary's sparks, the block-complete ring, and the last ten seconds of rest. Violet is
+     work in progress; orange is the moment something is finished. It is never alone: each
+     use rides with a word ("Session complete", "Block 3 complete", "Get set") or a shape.
+     8.35:1 on the ground and 6.68:1 on a card, so it holds as text as well as a mark.
+     --heat-dim is the same hue by hand at 0.16, like the -dim tints above — MOVE ONE AND
+     MOVE BOTH. Over the ground it lands at 1.26:1, a card's step, and --label on it is
+     13.87:1. */
+  --heat: #ff8a1f;
+  --heat-dim: rgba(255, 138, 31, 0.16);
 
   --success: #30d158;
   --danger: #ff5c50;
@@ -135,6 +148,9 @@
   --fs-headline: 28px;
   --fs-display: 34px;
   --fs-numeral: 56px;
+  /* The rest countdown alone: read from a metre away with the phone on the floor. An
+     extension of the scale for one figure, not a second scale. */
+  --fs-numeral-xl: 76px;
 
   /* Radius scale, nesting inward: --radius-xl is the coach card alone, the one lead surface;
      --radius-lg every other card and grouped list; --radius a button or a control on the page
@@ -268,11 +284,9 @@ body {
 .prog-target,
 .prog-change,
 .coach-meta,
-.coach-target-value,
 .rest-of,
 .rest-next-target,
 .sheet-pace,
-.summary-of,
 .ex-stat-value,
 .ex-stat-note,
 .ex-session-date,
@@ -284,12 +298,13 @@ body {
 .week-meta,
 .wk-day-detail,
 .wk-week,
-.mix-count,
 .consistency-line,
 .consistency-note,
-.week-facts,
 .browser-count,
-.weight-hint {
+.weight-hint,
+.chart-mark,
+.cov-key,
+.block-strip-facts {
   font-variant-numeric: tabular-nums;
 }
 
@@ -554,6 +569,7 @@ textarea {
 .banner,
 .progression-card,
 .why-card,
+.block-strip,
 .sheet {
   background-color: var(--bg-elevated);
   background-image: var(--surface-sheen);
@@ -742,7 +758,6 @@ button.row:active {
 .rest-caption,
 .rest-next-set,
 .timeline-day,
-.summary-stat .label,
 .big-stepper-label,
 .wk-day-name,
 .planner-name,
@@ -813,6 +828,11 @@ button.row:active {
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
   z-index: 100;
+}
+
+/* Focused when it opens, for a screen reader; it is a container, not a control. */
+.sheet:focus {
+  outline: none;
 }
 
 .sheet {
@@ -952,9 +972,6 @@ button.row:active {
   font-size: var(--fs-meta);
   color: var(--label-secondary);
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .block-change-value {
@@ -1165,11 +1182,6 @@ button.row:active {
   justify-content: center;
   background: var(--cat-cardio-dim);
   color: var(--cat-cardio);
-}
-
-/* ---- Workout screen ---- */
-.workout-hero {
-  padding: 4px 0 16px;
 }
 
 /* ---- Single-set logger: the context block ---- */
@@ -1383,7 +1395,10 @@ button.row:active {
 .ring {
   position: relative;
   flex-shrink: 0;
-  transition: --sweep 0.2s linear;
+  --ring-tip: var(--accent-bright);
+  transition:
+    --sweep 0.2s linear,
+    --ring-tip 0.3s var(--ease-out);
 }
 
 /* Registered so the sweep can transition: an unregistered custom property is a string and
@@ -1392,6 +1407,15 @@ button.row:active {
   syntax: '<angle>';
   inherits: true;
   initial-value: 0deg;
+}
+
+/* The lit end of the arc, registered for the same reason: it warms from --accent-bright to
+   --heat over the last ten seconds of rest, and both the gradient's last stop and the tip's
+   cap read it, so the arc and its cap change together rather than as two colours. */
+@property --ring-tip {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #b4aaf9;
 }
 
 /* A ring is a filled square cut to a band by a radial mask — the half pixel either side of
@@ -1428,7 +1452,7 @@ button.row:active {
   background: conic-gradient(
     var(--accent-fill) 0deg,
     var(--accent) calc(var(--sweep) * 0.6),
-    var(--accent-bright) var(--sweep),
+    var(--ring-tip) var(--sweep),
     transparent var(--sweep)
   );
 }
@@ -1450,8 +1474,75 @@ button.row:active {
 }
 
 .ring-cap-tip {
-  background: var(--accent-bright);
+  background: var(--ring-tip);
   transform: rotate(var(--sweep));
+}
+
+/* The last ten seconds of rest. A colour change and nothing else — no pulse, no scale: this
+   is the one piece of motion in the app that does not answer a tap, so it is the smallest
+   one there is. The caption changes word too, so the state survives greyscale. Under
+   reduced motion the transition is gone and the end state simply appears. */
+.rest-view[data-ending] .ring {
+  --ring-tip: var(--heat);
+}
+
+.rest-view[data-ending] .rest-time {
+  color: var(--heat);
+}
+
+/* A finished block: one solid heat band rather than the countdown's violet sweep — a full
+   conic gradient would put a seam at twelve o'clock where its dark start meets its lit end.
+   The disc inside takes --heat-dim, the warm ground the count sits on. */
+.ring-heat {
+  --ring-tip: var(--heat);
+}
+
+.ring-heat .ring-fill,
+.ring-heat .ring-cap-start {
+  background: var(--heat);
+}
+
+.ring-heat .ring-content {
+  inset: var(--stroke);
+  border-radius: 50%;
+  background: var(--heat-dim);
+}
+
+/* The rest dial: the ring plus a ring of ticks just outside it, 12 px of margin each side so
+   the ticks take layout space rather than overlapping what sits above and below. One tick
+   per 15 s of this rest and a longer one each whole minute, placed by RestTimer at the
+   angle the tip will reach with that much time left. A span per tick, each a 2 px wide
+   diameter of the dial rotated about its centre, with the mark drawn at its top end. A
+   diameter, not the whole square: a rotated square's box overflowed the dial and gave the
+   rest screen a sideways scroll. */
+.rest-dial {
+  position: relative;
+  padding: 12px;
+}
+
+.rest-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(50% - 1px);
+  width: 2px;
+  transform: rotate(var(--a));
+}
+
+.rest-tick::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  width: 2px;
+  height: 5px;
+  border-radius: 1px;
+  background: var(--separator);
+}
+
+.rest-tick[data-long]::before {
+  top: 0;
+  height: 9px;
 }
 
 .ring-content {
@@ -1466,10 +1557,11 @@ button.row:active {
 
 .rest-time {
   font-family: var(--display);
-  font-size: var(--fs-numeral);
+  font-size: var(--fs-numeral-xl);
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1;
+  transition: color 0.3s var(--ease-out);
 }
 
 .rest-time.complete {
@@ -1490,9 +1582,10 @@ button.row:active {
 /* The "Next" caption is gone: two lines that read "Set 2 of 3 / 80 kg × 8–12" under a
    running timer do not need a word telling you they are what comes next. */
 .rest-next-target {
-  font-size: var(--fs-title);
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-family: var(--display);
+  font-size: var(--fs-headline);
+  font-weight: 700;
+  letter-spacing: -0.02em;
   margin-top: var(--sp-1);
 }
 
@@ -1554,55 +1647,289 @@ button.row:active {
 }
 
 /* ---- Summary ---- */
-.summary-stats {
-  display: flex;
-  justify-content: space-around;
-  padding: 20px 0;
-}
-
-.summary-stat {
-  text-align: center;
-}
-
-.summary-stat .value {
-  font-family: var(--display);
-  font-size: var(--fs-display);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-}
-
-.summary-of {
-  font-size: var(--fs-title);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--label-secondary);
-}
-
 /* Facts about the session beside the ones above: the last time it was done, and the week.
    No colour and no arrow — compared, not scored. */
 .summary-context {
   color: var(--label-secondary);
   font-size: var(--fs-micro);
-  text-align: center;
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
-  padding-bottom: var(--sp-3);
 }
 
 .summary-context p {
   margin: 0;
 }
 
-.summary-note {
+.summary-note,
+.trim-note {
   color: var(--label-secondary);
   font-size: var(--fs-meta);
   padding: var(--sp-3) 0;
 }
 
-.summary-stat .label {
+/* The session overview's trimmed state: the line sits straight under the exercise card and
+   the undo straight under it, so the two read as one statement. */
+.trim-note {
+  margin: 0;
+}
+
+/* The finish summary's hero: the struck anvil beside the title. The sparks overhang the
+   glyph's box upward by ~5 px, which the hero's top padding and the title's line box pay
+   for. Its padding is tight on purpose: it is what lands Done above the fold for a
+   five-exercise session. */
+.finish-hero {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-2) 0 var(--sp-3);
+}
+
+.struck-anvil {
+  position: relative;
+  flex: 0 0 44px;
+  height: 44px;
+  color: var(--accent);
+}
+
+.struck-anvil > svg {
+  display: block;
+}
+
+.struck-sparks {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  fill: none;
+  stroke: var(--heat);
+  stroke-width: 1.3;
+  stroke-linecap: round;
+}
+
+/* Drawn in once, staggered so the three strike together in ~450 ms. The resting state is
+   the drawn one; the keyframe only supplies the undrawn start, so reduced motion — which
+   removes every animation — simply shows them drawn. */
+.struck-sparks path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  animation: spark-draw 0.33s var(--ease-out) both;
+}
+
+.struck-sparks path:nth-child(2) {
+  animation-delay: 0.06s;
+}
+
+.struck-sparks path:nth-child(3) {
+  animation-delay: 0.12s;
+}
+
+@keyframes spark-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+}
+
+/* The one big number on the finish summary: how long, in whole minutes. */
+.done-figure {
+  margin: 0 0 var(--sp-1);
+  font-family: var(--display);
+  font-size: var(--fs-numeral);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.done-figure-unit {
+  margin-left: var(--sp-2);
+  font-family: var(--sans);
+  font-size: var(--fs-title);
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--label-secondary);
+}
+
+.summary-facts {
+  color: var(--label);
+  font-size: var(--fs-meta);
+}
+
+/* "What you lifted" on the left, "Next time" over the verdict column on the right. */
+.lifted-header {
+  display: flex;
+  justify-content: space-between;
+}
+
+.lifted-sets {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
   margin-top: var(--sp-1);
+}
+
+.lifted-reps {
+  color: var(--label-secondary);
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Why an untouched exercise was left: four chips on one line under the exercise's row, at
+   the card's full width. It is a `.row` so the row after it still draws its separator, with
+   its own separator and top padding dropped so it reads as part of the row above. The 11px
+   of bottom padding clears the chips' 5px target overhang. */
+.skip-row {
+  min-height: 0;
+  padding-top: 0;
+}
+
+.skip-row::before {
+  display: none;
+}
+
+.chip-row.skip-why {
+  margin: 0;
+}
+
+/* One bar per set. A logged set is a --cat-lift fill to reps ÷ repsMax over a --bg-tertiary
+   track; a set not logged is an empty outline. Filled against hollow is the distinction, so
+   it holds in greyscale. */
+.set-strip {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.set-bar {
+  position: relative;
+  width: 6px;
+  height: 18px;
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px var(--label-secondary);
+  overflow: hidden;
+}
+
+.set-bar[data-done] {
+  background: var(--bg-tertiary);
+  box-shadow: none;
+}
+
+.set-bar > span {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--cat-lift);
+}
+
+/* The verdict column: the next target's glyph and weight, and the change under it. */
+.lifted-next {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.lifted-next .prog-target {
+  white-space: nowrap;
+}
+
+.lifted-next-change {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.lifted-next .prog-mark {
+  flex: none;
+}
+
+.lifted-next .prog-change {
+  min-width: 0;
+}
+
+/* ---- Block complete ---- */
+.block-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--sp-2) 0 var(--sp-5);
+}
+
+.block-hero .done-title {
+  margin-top: var(--sp-4);
+}
+
+.block-ring-count {
+  font-family: var(--display);
+  font-size: var(--fs-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.block-ring-of {
+  font-family: var(--sans);
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--label-secondary);
+}
+
+.block-strip {
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-4);
+}
+
+/* One column per session of the block (`--n`, set from the plan's sessionCount), so twelve
+   and forty-eight both span the card. The gap narrows with the count: at 4 px a 48-session
+   block would spend most of the card on gaps. */
+.block-strip-bars {
+  display: grid;
+  grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+  align-items: end;
+  gap: clamp(1px, calc(96px / var(--n)), 4px);
+  height: 48px;
+}
+
+.block-strip-bar {
+  border-radius: var(--radius-xs);
+  background: var(--cat-lift);
+}
+
+/* A custom session, hollow: shape rather than hue says it was not a rotation day. */
+.block-strip-bar[data-custom],
+.block-strip-key {
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--cat-lift);
+}
+
+.block-strip-key {
+  display: inline-block;
+  width: 7px;
+  height: 11px;
+  margin-right: 6px;
+  border-radius: 2px;
+  vertical-align: -1px;
+}
+
+.block-strip-facts {
+  margin: var(--sp-3) 0 0;
+  color: var(--label-secondary);
+  font-size: var(--fs-micro);
+}
+
+.block-strip-facts + .block-strip-facts {
+  margin-top: var(--sp-1);
+}
+
+.slope {
+  display: block;
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
 }
 
 /* ---- Empty state ---- */
@@ -1804,6 +2131,8 @@ button.row:active {
 /* ---- Settings rows ---- */
 /* The value and the chevron are ours; the <select> is transparent on top of them. See
    Selector.jsx for why styling the select directly cannot produce an aligned column. */
+/* 44 pt wide as well as tall: a one-digit value plus the chevron came to 28 pt, and the
+   native select laid over it is exactly as big as this box. */
 .selector {
   position: relative;
   display: inline-flex;
@@ -1811,6 +2140,7 @@ button.row:active {
   justify-content: flex-end;
   gap: var(--sp-1);
   min-height: 44px;
+  min-width: 44px;
   color: var(--label);
 }
 
@@ -1914,10 +2244,16 @@ button.row:active {
 }
 
 /* ---- A trend that says what it plots ---- */
-/* A dot per session, the range at the left, the first and last dates beneath, and a readout
-   above that follows the tapped session. The line is drawn the natural way up everywhere. */
+/* An instrument, not an ornament: a 104 px plot with a labelled scale of three gridlines
+   (max, the real midpoint, min), the category's tint as an area under the line, the latest
+   session emphasised and a readout above that follows the tapped session with a hairline
+   through it. The line is drawn the natural way up everywhere.
+
+   THE AREA FILL IS A SECOND GRADIENT. The rest ring used to be the only one in the app; this
+   one is the category's own -dim tint at the line fading to nothing at the floor of the
+   scale, so it adds no colour the app does not already paint. */
 .chart {
-  margin-top: var(--sp-2);
+  margin: var(--sp-2) 0 var(--sp-3);
 }
 
 .chart-readout {
@@ -1936,39 +2272,63 @@ button.row:active {
   gap: var(--sp-2);
 }
 
+/* Room above the plot for a block boundary's label, only when the chart has one. */
+.chart-body[data-marks] {
+  padding-top: 18px;
+}
+
+/* The labels sit on their gridlines rather than being spaced between the plot's edges. */
 .chart-range {
+  position: relative;
   flex: 0 0 56px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
   font-size: var(--fs-caption);
   color: var(--label-secondary);
   text-align: right;
-  padding: 0 0 2px;
 }
 
-.chart-range span:only-child {
-  margin: auto 0;
+.chart-range span {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .chart-plot {
   position: relative;
   flex: 1;
   min-width: 0;
-  height: 64px;
+  height: 104px;
 }
 
 .chart-plot .spark {
   height: 100%;
   margin-top: 0;
+  overflow: visible;
 }
 
+.chart-grid {
+  stroke: var(--separator);
+  stroke-width: 1;
+}
+
+.chart-area-top {
+  stop-color: var(--cat-lift-dim);
+}
+
+.chart[data-cat='cardio'] .chart-area-top {
+  stop-color: var(--cat-cardio-dim);
+}
+
+/* Every session is a small dot; the latest is the one the eye lands on at rest. Its ring is
+   the sheet's own colour, which cuts it out of the line rather than outlining it. */
 .chart-dot {
   position: absolute;
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--cat-lift);
+  opacity: 0.6;
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
@@ -1977,11 +2337,53 @@ button.row:active {
   background: var(--cat-cardio);
 }
 
-/* The picked session is a larger dot ringed in the label colour, so it reads in greyscale. */
+.chart-dot[data-latest],
 .chart-dot[data-picked] {
-  width: 11px;
-  height: 11px;
-  outline: 2px solid var(--label);
+  width: 10px;
+  height: 10px;
+  opacity: 1;
+  outline: 3px solid var(--bg-elevated);
+}
+
+/* The picked session carries the label colour as a ring instead, so it reads in greyscale. */
+.chart-dot[data-picked] {
+  outline: 1.5px solid var(--label);
+  outline-offset: 2px;
+}
+
+/* Full height of the plot through the picked session. */
+.chart-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px solid var(--label-secondary);
+  pointer-events: none;
+}
+
+/* A block boundary: a dashed hairline between two sessions, its label at the top. */
+.chart-mark {
+  position: absolute;
+  top: -18px;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed var(--label-secondary);
+  pointer-events: none;
+}
+
+.chart-mark span {
+  position: absolute;
+  top: 0;
+  left: 4px;
+  font-size: var(--fs-caption);
+  line-height: 1;
+  color: var(--label-secondary);
+  white-space: nowrap;
+}
+
+.chart-mark[data-end] span {
+  left: auto;
+  right: 4px;
 }
 
 .chart-hits {
@@ -2005,7 +2407,7 @@ button.row:active {
   justify-content: space-between;
   font-size: var(--fs-caption);
   color: var(--label-secondary);
-  margin-top: var(--sp-1);
+  margin-top: var(--sp-2);
   padding-left: calc(56px + var(--sp-2));
 }
 
@@ -2027,6 +2429,25 @@ button.row:active {
   margin-top: 0;
 }
 
+.spark-wrap {
+  position: relative;
+  display: block;
+}
+
+/* The one mark a row's trend carries: where it ends. */
+.spark-end {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--cat-lift);
+  transform: translate(-50%, -50%);
+}
+
+.spark-wrap[data-cat='cardio'] .spark-end {
+  background: var(--cat-cardio);
+}
+
 .mine-toggle {
   align-self: flex-start;
   padding: var(--sp-2) 0;
@@ -2042,11 +2463,7 @@ button.row:active {
    lag on the way in and as a control that has already forgotten you on the way out. The
    base duration here is the RELEASE, and the :active rule below shortens the press to
    0.09s, because entering a state uses the incoming rule's timing and leaving it uses the
-   base one. Fast in, settled out.
-
-   `width` left this list: only .mix-fill ever animates one, and carrying a width
-   transition on twelve selectors that never change width meant any future layout change to
-   a chip or a row would have animated by accident. */
+   base one. Fast in, settled out. */
 .chip,
 button.row,
 .btn-add,
@@ -2086,9 +2503,8 @@ button.row:active,
 
 /* The toggle knob is the one thing here that is not a press response — it travels between
    two settled positions, so it keeps a symmetrical duration in both directions. */
-.toggle .knob,
-.mix-fill {
-  transition: transform 0.22s var(--ease-out), width 0.3s var(--ease-out);
+.toggle .knob {
+  transition: transform 0.22s var(--ease-out);
 }
 
 /* The one piece of feedback for logging a set: the chip it becomes settles into place. It
@@ -2397,19 +2813,7 @@ button.row:active,
   font-size: var(--fs-meta);
 }
 
-/* ---- Progression list on the summary ---- */
-.prog-row {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-4);
-  min-height: 44px;
-}
-
-.prog-row + .prog-row {
-  border-top: 0.5px solid var(--separator);
-}
-
+/* ---- Progression verdict on the summary ---- */
 /* Drawn glyphs, not ↑ ↓ –. The typographic arrows sat beside icons solved for a constant
    1.75px rendered stroke and matched none of them, at a weight the font picked rather than
    one we set. Still a fact and not a badge: colour and direction, nothing that fills. */
@@ -2426,14 +2830,6 @@ button.row:active,
 
 .prog-mark.deload {
   color: var(--danger);
-}
-
-.prog-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .prog-target {
@@ -2621,19 +3017,6 @@ button.row:active,
   border-top: 0.5px solid var(--separator);
 }
 
-/* The target sits between the name of the session and the button: the last thing read
-   before the decision. Ruled off rather than boxed — another card inside this one would
-   make the screen a stack of widgets. */
-.coach-target {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--sp-3);
-  border-top: 0.5px solid var(--separator);
-  margin-top: var(--sp-4);
-  padding-top: var(--sp-3);
-}
-
 .coach-target-name {
   font-size: var(--fs-meta);
   color: var(--label-secondary);
@@ -2643,17 +3026,8 @@ button.row:active,
   white-space: nowrap;
 }
 
-.coach-target-value {
-  font-size: var(--fs-title);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  flex-shrink: 0;
-}
-
-/* The cardio card's reference is a last session, which carries three facts where a lift
-   carries one, so its value drops to body size to share the line with its label. */
-/* Two lines, label over value: a last session carries three facts where a lift's target
-   carries one, and side by side the label was cut to "Last easy ride · …". */
+/* Two lines, label over value: a last session carries three facts, and side by side the
+   label was cut to "Last easy ride · …". */
 .coach-last {
   display: flex;
   flex-direction: column;
@@ -2995,6 +3369,17 @@ button.row:active,
   display: none;
 }
 
+/* On the page for a screen reader and nowhere else. `.visually-gone` above is display: none,
+   which removes an element from the accessibility tree as well. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .pick-tick {
   display: flex;
   color: var(--accent);
@@ -3041,45 +3426,6 @@ button.row:active,
 }
 
 /* ---- Week detail ---- */
-.mix-row {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-4);
-  min-height: 44px;
-}
-
-.mix-row + .mix-row {
-  border-top: 0.5px solid var(--separator);
-}
-
-.mix-label {
-  flex: 0 0 88px;
-  font-size: var(--fs-meta);
-}
-
-.mix-bar {
-  flex: 1;
-  height: 6px;
-  border-radius: var(--radius-pill);
-  background: var(--bg-tertiary);
-  overflow: hidden;
-}
-
-.mix-fill {
-  display: block;
-  height: 100%;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-}
-
-.mix-count {
-  flex: 0 0 20px;
-  text-align: right;
-  font-size: var(--fs-meta);
-  font-weight: 600;
-}
-
 .wk-day {
   display: flex;
   align-items: baseline;
@@ -3141,8 +3487,7 @@ button.row:active,
   font-weight: 600;
 }
 
-.consistency-note,
-.week-facts {
+.consistency-note {
   font-size: var(--fs-micro);
   color: var(--label-secondary);
   margin: var(--sp-2) 0 0;
@@ -3376,11 +3721,13 @@ button.row:active,
   padding-bottom: 0;
 }
 
+/* The pair fills the sheet: two columns, each about 45% of the sheet once the figure's own
+   margin is cropped off. */
 .cov-figures {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--sp-2);
-  margin: var(--sp-2) 0 var(--sp-4);
+  margin: var(--sp-2) 0 var(--sp-3);
 }
 
 .cov-figure {
@@ -3389,11 +3736,62 @@ button.row:active,
   height: auto;
 }
 
-/* Stroked in the sheet's own colour, which is what separates one muscle from the next. */
-.cov-figure path {
+/* Stroked in the sheet's own colour, which is what separates one muscle from the next. The
+   figure is a tap target for opening a group's row, but the list stays the accessible route:
+   the SVG is aria-hidden and nothing in it takes focus. */
+.cov-figure path[data-group] {
+  cursor: pointer;
+}
+
+.cov-edge {
+  fill: none;
   stroke: var(--bg-elevated);
-  stroke-width: 2.5;
+  stroke-width: 1px;
   stroke-linejoin: round;
+  pointer-events: none;
+}
+
+/* An inner outline: drawn on the part's edge, clipped to the part, and the edge stroke above
+   takes its outer half — so 1px of edge plus 2 x 1px here leaves 1px inside the muscle. */
+.cov-ring {
+  fill: none;
+  stroke: var(--cov-2);
+  stroke-width: 3px;
+  pointer-events: none;
+}
+
+/* The open group: 1.5px of the label colour, by the same arithmetic. */
+.cov-ring[data-open] {
+  stroke: var(--label);
+  stroke-width: 4px;
+}
+
+.cov-legend {
+  display: grid;
+  gap: var(--sp-1);
+  margin: 0 0 var(--sp-4);
+}
+
+.cov-key {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: var(--fs-caption);
+  line-height: 1.2;
+  color: var(--label-secondary);
+  text-align: center;
+}
+
+.cov-swatch {
+  width: 100%;
+  height: 10px;
+  border-radius: var(--radius-xs);
+}
+
+.cov-swatch[data-ring] {
+  outline: 1px solid var(--cov-2);
+  outline-offset: -1px;
 }
 
 .cov-bar {

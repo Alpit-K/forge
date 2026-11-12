@@ -126,6 +126,24 @@ describe('block completion', () => {
   it('counts a freeform workout toward the block', () => {
     expect(sessionsDone([{ blockIndex: 0, freeform: true, rotationIndex: null }], 0)).toBe(1)
   })
+
+  // An extra session is a custom workout done on top of the plan. Counting it used up one of
+  // the block's sessions, so a bonus session cost a rotation day its turn.
+  it('does not count an extra session toward the block', () => {
+    const workouts = [
+      { blockIndex: 0, rotationIndex: 0 },
+      { blockIndex: 0, freeform: true, rotationIndex: null },
+      { blockIndex: 0, freeform: true, rotationIndex: null, extra: true },
+    ]
+    expect(sessionsDone(workouts, 0)).toBe(2)
+    expect(customSessions(workouts, 0)).toBe(1)
+    expect(extraSessions(workouts, 0)).toBe(1)
+  })
+
+  it('carries the extra flag from the active workout onto the log', () => {
+    expect(buildWorkoutLog(active({ freeform: true, extra: true }), '2026-08-27T06:45:00.000Z').extra).toBe(true)
+    expect(buildWorkoutLog(active(), '2026-08-27T06:45:00.000Z').extra).toBeUndefined()
+  })
 })
 
 describe('lastDoneByRotation', () => {
@@ -213,12 +231,12 @@ describe('slotResult', () => {
 
   it('reads the slot back under its own id', () => {
     const log = { entries: [{ exerciseId: '0043', swappedFrom: null, sets: [set(80, 8), set(85, 6)] }] }
-    expect(slotResult(log, '0043', '0043')).toEqual({ weightKg: 85, swapped: false })
+    expect(slotResult(log, '0043', '0043')).toMatchObject({ weightKg: 85, swapped: false })
   })
 
   it('reads a permanently swapped slot under its effective id', () => {
     const log = { entries: [{ exerciseId: '0861', swappedFrom: null, sets: [set(60, 10)] }] }
-    expect(slotResult(log, '0043', '0861')).toEqual({ weightKg: 60, swapped: false })
+    expect(slotResult(log, '0043', '0861')).toMatchObject({ weightKg: 60, swapped: false })
   })
 
   // The whole reason this is a function: a mid-session swap files the entry under the NEW
@@ -226,7 +244,7 @@ describe('slotResult', () => {
   // untrained. The caller needs to know it was a swap, not just that a weight exists.
   it('finds a mid-session swap through swappedFrom and reports it', () => {
     const log = { entries: [{ exerciseId: '0739', swappedFrom: '0043', sets: [set(40, 12)] }] }
-    expect(slotResult(log, '0043', '0043')).toEqual({ weightKg: 40, swapped: true })
+    expect(slotResult(log, '0043', '0043')).toMatchObject({ weightKg: 40, swapped: true })
   })
 
   it('takes the heaviest completed set, not the last', () => {
@@ -236,7 +254,7 @@ describe('slotResult', () => {
 
   it('reports a null weight for a slot logged with nothing ticked', () => {
     const log = { entries: [{ exerciseId: '0043', sets: [set(80, 8, false)] }] }
-    expect(slotResult(log, '0043', '0043')).toEqual({ weightKg: null, swapped: false })
+    expect(slotResult(log, '0043', '0043')).toMatchObject({ weightKg: null, swapped: false })
   })
 
   it('returns null for a slot the log has no entry for', () => {
@@ -424,5 +442,133 @@ describe('blockWeightChanges', () => {
   it('ignores lighter back-off sets and unticked sets when counting reps', () => {
     const [c] = blockWeightChanges([log([s(10, 60), s(9, 60), s(15, 40), s(2, 60, false)])])
     expect(c.firstReps).toBe(9)
+  })
+
+  // The same rule as the next target: a planned lift's weight is not read off an extra session.
+  it('skips an extra session for a planned lift, not for an unplanned one', () => {
+    const plan = { rotation: [{ name: 'a', exercises: [{ exerciseId: '0043' }] }] }
+    const extra = { extra: true, freeform: true, entries: [
+      { exerciseId: '0043', sets: [s(12, 40)] },
+      { exerciseId: '0200', sets: [s(12, 25)] },
+    ] }
+    const changes = blockWeightChanges([log([s(8, 60)]), extra], plan, {})
+    expect(changes.find((c) => c.exerciseId === '0043').last).toBe(60)
+    expect(changes.find((c) => c.exerciseId === '0200').last).toBe(25)
+  })
+})
+
+// ---- the sweep of 2026-11-10 ----
+import { blockOwed, minutesLeft, customSessions, extraSessions } from './session.js'
+
+describe('blockOwed', () => {
+  const slot = (exerciseId, sets = 3) => ({ exerciseId, sets, repsMin: 8, repsMax: 12, restSec: 90, incrementKg: null })
+  const plan = {
+    sessionCount: 12,
+    rotation: [
+      { name: 'A', exercises: [slot('a1'), slot('a2')] },
+      { name: 'B', exercises: [slot('b1'), slot('a2')] },
+    ],
+  }
+  const sets = (...done) => done.map((d) => ({ reps: 10, weightKg: 50, done: d }))
+  const log = (rotationIndex, entries, extra = {}) => ({ blockIndex: 2, sessionIndex: 0, rotationIndex, entries, ...extra })
+  const e = (exerciseId, s, extra = {}) => ({ exerciseId, swappedFrom: null, sets: s, ...extra })
+
+  it('is empty when every planned set of every trained day was done', () => {
+    const w = [log(0, [e('a1', sets(true, true, true)), e('a2', sets(true, true, true))])]
+    expect(blockOwed(plan, {}, w, 2)).toEqual([])
+  })
+
+  it('lists an exercise left untouched and one a set short, against the days trained only', () => {
+    const w = [log(0, [e('a1', sets(false, false, false)), e('a2', sets(true, true, false))])]
+    expect(blockOwed(plan, {}, w, 2)).toEqual([
+      { exerciseId: 'a1', rotationIndex: 0, planned: 3, done: 0, owed: 3 },
+      { exerciseId: 'a2', rotationIndex: 0, planned: 3, done: 2, owed: 1 },
+    ])
+  })
+
+  it('asks nothing for a day that was never trained', () => {
+    const w = [log(0, [e('a1', sets(true, true, true)), e('a2', sets(true, true, true))])]
+    expect(blockOwed(plan, {}, w, 2).some((r) => r.exerciseId === 'b1')).toBe(false)
+  })
+
+  it('adds an exercise planned on two days across both', () => {
+    const w = [
+      log(0, [e('a1', sets(true, true, true)), e('a2', sets(true, true, true))]),
+      log(1, [e('b1', sets(true, true, true)), e('a2', sets(false, false, false))]),
+    ]
+    expect(blockOwed(plan, {}, w, 2)).toEqual([{ exerciseId: 'a2', rotationIndex: 0, planned: 6, done: 3, owed: 3 }])
+  })
+
+  it('counts sets done in a custom session, which plans nothing itself', () => {
+    const w = [
+      log(0, [e('a1', sets(false, false, false)), e('a2', sets(true, true, true))]),
+      log(null, [e('a1', sets(true, true, true))], { freeform: true }),
+    ]
+    expect(blockOwed(plan, {}, w, 2)).toEqual([])
+  })
+
+  it('files a mid-session swap under the slot it stood in for', () => {
+    const w = [log(0, [e('zz', sets(true, true, true), { swappedFrom: 'a1' }), e('a2', sets(true, true, true))])]
+    expect(blockOwed(plan, {}, w, 2)).toEqual([])
+  })
+
+  it('reads a permanently swapped slot as the exercise swapped to', () => {
+    const w = [log(0, [e('x9', sets(true, false, false)), e('a2', sets(true, true, true))])]
+    expect(blockOwed(plan, { a1: 'x9' }, w, 2)).toEqual([
+      { exerciseId: 'x9', rotationIndex: 0, planned: 3, done: 1, owed: 2 },
+    ])
+  })
+
+  it('ignores other blocks', () => {
+    const w = [{ ...log(0, [e('a1', sets(false, false, false))]), blockIndex: 1 }]
+    expect(blockOwed(plan, {}, w, 2)).toEqual([])
+  })
+})
+
+describe('minutesLeft', () => {
+  const done = (n) => Array.from({ length: n }, () => ({ reps: 10, weightKg: 50, done: true }))
+  const log = (mins, n) => ({
+    startedAt: '2026-01-01T06:00:00.000Z',
+    finishedAt: new Date(Date.parse('2026-01-01T06:00:00.000Z') + mins * 60000).toISOString(),
+    entries: [{ exerciseId: 'a', sets: done(n) }],
+  })
+  const act = { exercises: [{ performed: [{ done: true }, { done: false }, { done: false }] }, { performed: [{ done: false }] }] }
+
+  it('is the median minutes per set times the sets left', () => {
+    // 2, 3 and 10 minutes a set: the median is 3, and three sets are left.
+    expect(minutesLeft(act, [log(20, 10), log(30, 10), log(100, 10)])).toBe(9)
+  })
+
+  it('is null with no history to take a rate from', () => {
+    expect(minutesLeft(act, [])).toBeNull()
+    expect(minutesLeft(act, [log(30, 0)])).toBeNull()
+  })
+})
+
+describe('customSessions', () => {
+  it('counts the freeform logs of one block', () => {
+    const w = [
+      { blockIndex: 1, freeform: true },
+      { blockIndex: 1 },
+      { blockIndex: 2, freeform: true },
+    ]
+    expect(customSessions(w, 1)).toBe(1)
+  })
+})
+
+describe('a set carries the time it was ticked into the log', () => {
+  it('keeps `at` on a done set and leaves an unticked one without it', () => {
+    const a = active()
+    a.exercises[0].performed = [
+      { reps: 10, weightKg: 60, done: true, at: '2026-08-27T06:05:00.000Z' },
+      { reps: 10, weightKg: 60, done: false, at: '2026-08-27T06:09:00.000Z' },
+    ]
+    a.exercises[0].cut = [{ reps: 10, weightKg: 60, done: false }]
+    const log = buildWorkoutLog(a, '2026-08-27T07:00:00.000Z')
+    expect(log.entries[0].sets).toEqual([
+      { reps: 10, weightKg: 60, done: true, at: '2026-08-27T06:05:00.000Z' },
+      { reps: 10, weightKg: 60, done: false },
+    ])
+    expect('cut' in log.entries[0]).toBe(false)
   })
 })

@@ -9,20 +9,7 @@ import { WEEK_SHAPE_KINDS, CARDIO_SPORTS } from '../lib/seed.js'
 import { ACTIVITY_TYPES } from '../lib/activities.js'
 import { fmtAgo } from '../lib/format.js'
 import Selector from '../components/Selector.jsx'
-
-function Toggle({ checked, onChange }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      className={`toggle${checked ? ' on' : ''}`}
-      onClick={() => onChange(!checked)}
-    >
-      <span className="knob" />
-    </button>
-  )
-}
+import Toggle from '../components/Toggle.jsx'
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -157,12 +144,12 @@ export default function Settings({ onClose }) {
         <Row
           title="Keep screen awake"
           thumb={<RowIcon name="sun" />}
-          value={<Toggle checked={settings.keepAwake} onChange={(v) => setSetting('keepAwake', v)} />}
+          value={<Toggle label="Keep screen awake" checked={settings.keepAwake} onChange={(v) => setSetting('keepAwake', v)} />}
         />
         <Row
           title="Sound"
           thumb={<RowIcon name="speaker" />}
-          value={<Toggle checked={settings.sound} onChange={(v) => setSetting('sound', v)} />}
+          value={<Toggle label="Sound" checked={settings.sound} onChange={(v) => setSetting('sound', v)} />}
         />
       </Group>
 
